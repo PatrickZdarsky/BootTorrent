@@ -1,0 +1,19 @@
+﻿services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    ports:
+      - 1883:1883
+      - 9001:9001
+#    volumes:
+#      - ./mosquitto/config:/mosquitto/config:rw
+#      - ./mosquitto/data:/mosquitto/data:rw
+#      - ./mosquitto/log:/mosquitto/log:rw
+    restart: unless-stopped
+    privileged: true
+  mqttx:
+    image: emqx/mqttx-web
+    container_name: mqttx
+    restart: unless-stopped
+    ports:
+      - 8089:80
