@@ -1,6 +1,10 @@
 ﻿namespace boottorrent_lib.client;
 
-public class Machine(string id)
+/// <summary>
+/// A single individual machine.
+/// </summary>
+/// <param name="id"></param>
+public class Machine(string id, string ipAddress)
 {
     
 }
