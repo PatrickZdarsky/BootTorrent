@@ -1,0 +1,8 @@
+﻿apiVersion: v2
+name: boottorrent
+version: 0.0.0
+
+dependencies:
+  - name: mosquitto
+    version: 2.4.1
+    repository: https://storage.googleapis.com/t3n-helm-charts
