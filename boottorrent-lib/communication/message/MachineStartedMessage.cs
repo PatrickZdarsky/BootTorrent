@@ -1,6 +1,6 @@
 ﻿using MessagePack;
 
-namespace boottorrent_lib.transport.message;
+namespace boottorrent_lib.communication.message;
 
 [MessagePackObject]
 public class MachineStartedMessage
