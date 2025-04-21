@@ -3,9 +3,9 @@
 namespace boottorrent_lib.communication.message;
 
 [MessagePackObject]
-public class MachineStartedMessage
+public class MachineStartedMessage : IMqttMessage
 {
-    public static readonly string MessageSuffix = "startup";
+    public static readonly string MessageType = "startup";
     
     [Key(0)]
     public string IPAddress { get; set; }
