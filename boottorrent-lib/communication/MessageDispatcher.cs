@@ -7,16 +7,15 @@ namespace boottorrent_lib.communication;
 public class MessageDispatcher
 {
     private readonly ILogger<MessageDispatcher> _logger;
-    private readonly IMessageCodec _codec;
     private readonly Dictionary<string, (Type messageType, Func<MqttTopicContext, ReadOnlyMemory<byte>, Task> handlerFunc)> _routes;
 
-    public IMessageCodec Codec => _codec;
-    
+    public IMessageCodec Codec { get; }
+
     public MessageDispatcher(IMessageCodec codec, IServiceProvider provider, ILogger<MessageDispatcher> logger)
     {
-        _codec = codec;
+        Codec = codec;
         _logger = logger;
-        _routes = new();
+        _routes = new Dictionary<string, (Type messageType, Func<MqttTopicContext, ReadOnlyMemory<byte>, Task> handlerFunc)>();
 
         var handlerInterfaceType = typeof(IMessageHandler<>);
 
@@ -45,7 +44,7 @@ public class MessageDispatcher
             _routes[eventTypeKey] = (messageType, async (machineId, payload) =>
             {
                 var method = typeof(IMessageCodec).GetMethod(nameof(IMessageCodec.Decode))!.MakeGenericMethod(messageType);
-                var msg = method.Invoke(_codec, new object[] { payload })!;
+                var msg = method.Invoke(Codec, new object[] { payload })!;
 
                 var handleMethod = iface.GetMethod("HandleAsync")!;
                 await (Task)handleMethod.Invoke(handlerInstance, new[] { machineId, msg })!;
