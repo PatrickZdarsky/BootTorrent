@@ -10,7 +10,6 @@ public class MachineStartedHandler : IMessageHandler<MachineStartedMessage>
     public MachineStartedHandler(ILogger<MachineStartedHandler> logger)
     {
         _logger = logger;
-        _logger.LogInformation("MachineStartedHandler initialized");
     }
 
     public string MessageType => MachineStartedMessage.MessageType;

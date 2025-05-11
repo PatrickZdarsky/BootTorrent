@@ -1,4 +1,5 @@
 ﻿using boottorrent_lib.communication.codec;
+using boottorrent_lib.communication.message;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -60,12 +61,8 @@ public class MessageDispatcher
         {
             return route.handlerFunc(context, payload);
         }
-        else
-        {
-            _logger.LogWarning("Unknown message type: {messageType}, Context: {context}", context.MessageType, context);
-        }
 
-        // Could log warning or ignore unsupported cases
+        _logger.LogWarning("Unknown message type: {messageType}, Context: {context}", context.MessageType, context);
         return Task.CompletedTask;
     }
 }
