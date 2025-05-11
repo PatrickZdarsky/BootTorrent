@@ -1,8 +1,6 @@
 ﻿using boottorrent_lib.communication;
-using boottorrent_lib.communication.message;
 using Microsoft.Extensions.Options;
 using MQTTnet.Client;
-using MQTTnet.Formatter;
 using MQTTnet.Protocol;
 
 namespace btserver;
@@ -18,9 +16,6 @@ public class ServerMqttService : MqttMessageService
     {
         MqttClient.ApplicationMessageReceivedAsync += HandleMessageReceivedAsync;
         await MqttClient.SubscribeAsync("boottorrent/evt/#", MqttQualityOfServiceLevel.AtLeastOnce);
-
-        await PublishAsync(new MachineStartedMessage { IPAddress = "TEST" },
-            MqttTopicContext.CreateEventFromMachine("Local", MachineStartedMessage.MessageType));
     }
 
     protected override Task HandleDisconnectedAsync(MqttClientDisconnectedEventArgs eventArgs)

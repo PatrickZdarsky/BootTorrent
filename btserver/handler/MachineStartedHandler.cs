@@ -16,7 +16,7 @@ public class MachineStartedHandler : IMessageHandler<MachineStartedMessage>
 
     public Task HandleAsync(MqttTopicContext context, MachineStartedMessage message)
     {
-        _logger.LogInformation("Machine started: {IPAddress}", message.IPAddress);
+        _logger.LogInformation("Machine started: {ClientIdentifier} IP: {IPAddress}", context.TargetId, message.IPAddress);
         return Task.CompletedTask;
     }
 }

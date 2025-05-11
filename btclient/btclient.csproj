@@ -15,5 +15,16 @@
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0"/>
         <PackageReference Include="MQTTnet.AspNetCore" Version="4.3.7.1207" />
         <PackageReference Include="Scrutor" Version="6.0.1" />
+        <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+        <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="handler\" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\boottorrent-lib\boottorrent-lib.csproj" />
     </ItemGroup>
 </Project>
