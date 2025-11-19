@@ -42,5 +42,13 @@ builder.Services.AddSingleton<ITorrentCreator, MonoTorrentCreator>();
 
 builder.Services.AddHostedService<Worker>();
 
-var host = builder.Build();
-host.Run();
+
+var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+ var creator = scope.ServiceProvider.GetRequiredService<ITorrentCreator>();
+ await creator.LoadExistingArtifactsAsync();
+}
+
+app.Run();

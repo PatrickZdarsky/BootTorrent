@@ -3,7 +3,8 @@
 public class TorrentArtifact
 {
     public string InfoHash => torrent.InfoHash;
-    public string Name;
+    public string Name { get; init; } = default!;
+    public string ID { get; init; } = default!;
     
     
     public TorrentDescriptor torrent;

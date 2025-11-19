@@ -16,7 +16,7 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _torrentCreator.GenerateTorrentArtifactAsync("SC_Contract", "ShiftControl Contract",
+        await _torrentCreator.GenerateTorrentArtifactAsync("SC_Contract", "ShiftControl Contract",
             "..\\app\\ShiftControl-Contract.pdf");
         
         while (!stoppingToken.IsCancellationRequested)

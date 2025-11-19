@@ -2,7 +2,9 @@
 
 public sealed class TorrentStats
 {
-    public string InfoHash { get; init; } = default!;
+    public string JobId { get; init; } = default!;
+    public string ArtifactId { get; init; } = default!;
+    
     public double ProgressPercent { get; init; }        // 0..100
     public long BytesDownloaded { get; init; }
     public long BytesUploaded { get; init; }
