@@ -29,12 +29,21 @@ public class MonoTorrentCreator : ITorrentCreator
             return;
         }
 
-        var metaFiles = Directory.GetFiles(_settings.ArtifactStoragePath, "*.meta.json");
-        foreach (var metaFile in metaFiles)
+        LoadedArtifacts.Clear();
+
+        // New layout: each artifact has its own subdirectory containing payload, .torrent and .meta.json.
+        var artifactDirectories = Directory.GetDirectories(_settings.ArtifactStoragePath);
+        foreach (var artifactDirectory in artifactDirectories)
         {
+            var metaFile = Directory.GetFiles(artifactDirectory, "*.meta.json").FirstOrDefault();
+            if (metaFile == null)
+            {
+                continue;
+            }
+
             var json = await File.ReadAllTextAsync(metaFile);
             var artifact = JsonConvert.DeserializeObject<TorrentArtifact>(json);
-            if (artifact != null)
+            if (artifact != null && LoadedArtifacts.All(a => a.ID != artifact.ID))
             {
                 LoadedArtifacts.Add(artifact);
             }
@@ -55,9 +64,12 @@ public class MonoTorrentCreator : ITorrentCreator
         
         var fileName = NameUtil.ToFilePathName(Path.GetFileName(name));
         var id = Guid.NewGuid().ToString();
-        var artifactFilePath = Path.Combine(_settings.ArtifactStoragePath, fileName + Path.GetExtension(Path.GetFileName(filePath)));
-        var torrentFilePath = Path.Combine(_settings.ArtifactStoragePath, fileName + ".torrent");
-        var artifactMetaDataPath = Path.Combine(_settings.ArtifactStoragePath, fileName + ".meta.json");
+        var artifactDirectoryPath = Path.Combine(_settings.ArtifactStoragePath, id);
+        Directory.CreateDirectory(artifactDirectoryPath);
+
+        var artifactFilePath = Path.Combine(artifactDirectoryPath, fileName + Path.GetExtension(Path.GetFileName(filePath)));
+        var torrentFilePath = Path.Combine(artifactDirectoryPath, fileName + ".torrent");
+        var artifactMetaDataPath = Path.Combine(artifactDirectoryPath, fileName + ".meta.json");
         
         //Copy artifact to storage path
         File.Copy(filePath, artifactFilePath, true);
@@ -96,6 +108,8 @@ public class MonoTorrentCreator : ITorrentCreator
 
         //Save metadata
         await File.WriteAllTextAsync(artifactMetaDataPath, JsonConvert.SerializeObject(torrentArtifact));
+
+        LoadedArtifacts.Add(torrentArtifact);
         
         return torrentArtifact;
     }
