@@ -19,6 +19,7 @@ builder.Services.AddSerilog();
 //Config
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
 builder.Services.Configure<ArtifactSettings>(builder.Configuration.GetSection("artifacts"));
+builder.Services.Configure<TrackerSettings>(builder.Configuration.GetSection("tracker"));
 
 //Setup MQTT
 builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();

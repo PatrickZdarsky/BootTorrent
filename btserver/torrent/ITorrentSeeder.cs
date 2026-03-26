@@ -4,5 +4,5 @@ namespace btserver.torrent;
 
 public interface ITorrentSeeder
 {
-    
+    Task SeedArtifacts(List<TorrentArtifact> artifacts);
 }

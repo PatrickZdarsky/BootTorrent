@@ -2,7 +2,12 @@
 
 namespace btserver.torrent;
 
-public class ITorrentTrackerHandler
+public interface ITorrentTrackerHandler
 {
+    /// <summary>
+    /// Main entry point for individual torrent clients to manage which torrents they can access directly from the server
+    /// </summary>
+    /// <param name="clientId">The id of the client which is requesting available torrents</param>
+    /// <returns></returns>
     Task<List<TorrentArtifact>> GetAvailableTorrentsAsync(string clientId);
 }
