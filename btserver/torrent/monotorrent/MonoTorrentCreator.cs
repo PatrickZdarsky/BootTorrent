@@ -11,9 +11,9 @@ namespace btserver.torrent.monotorrent;
 public class MonoTorrentCreator : ITorrentCreator
 {
     private ILogger<MonoTorrentCreator> Logger { get; }
-    private readonly ArtifactSettings _settings;
+    private readonly TorrentSettings _settings;
     
-    public MonoTorrentCreator(IOptions<ArtifactSettings> settings, ILogger<MonoTorrentCreator> logger)
+    public MonoTorrentCreator(IOptions<TorrentSettings> settings, ILogger<MonoTorrentCreator> logger)
     {
         Logger = logger;
         this._settings = settings.Value;
@@ -49,7 +49,24 @@ public class MonoTorrentCreator : ITorrentCreator
             }
         }
     }
-    
+
+    public string ConstructArtifactPathFromArtifact(TorrentArtifact artifact)
+    {
+        var artifactDirectoryPath = Path.Combine(_settings.ArtifactStoragePath, artifact.ID);
+        var artifactFilePath = Directory.GetFiles(artifactDirectoryPath, $"{NameUtil.ToFilePathName(artifact.Name)}.*")
+            .FirstOrDefault(f => !f.EndsWith(".torrent") && !f.EndsWith(".meta.json"));
+        
+        return artifactFilePath ?? throw new FileNotFoundException($"Artifact file for '{artifact.Name}' with ID '{artifact.ID}' not found");
+    }
+
+    public string ConstructTorrentPathFromArtifact(TorrentArtifact torrent)
+    {        
+        var artifactDirectoryPath = Path.Combine(_settings.ArtifactStoragePath, torrent.ID);
+        var torrentFilePath = Directory.GetFiles(artifactDirectoryPath, $"{NameUtil.ToFilePathName(torrent.Name)}.torrent").FirstOrDefault();
+        
+        return torrentFilePath ?? throw new FileNotFoundException($"Torrent file for '{torrent.Name}' with ID '{torrent.ID}' not found");
+    }
+
     public async Task<TorrentArtifact> GenerateTorrentArtifactAsync(string name, string description, string filePath)
     {
         var fileHash = await ComputeSHA256Hash(filePath);

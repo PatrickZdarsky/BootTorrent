@@ -4,6 +4,10 @@ namespace btserver.torrent;
 
 public interface ITorrentCreator
 {
-    public Task<TorrentArtifact> GenerateTorrentArtifactAsync(string name, string description, string filePath);
+    List<TorrentArtifact> LoadedArtifacts { get; }
+    Task<TorrentArtifact> GenerateTorrentArtifactAsync(string name, string description, string filePath);
     Task LoadExistingArtifactsAsync();
+
+    string ConstructArtifactPathFromArtifact(TorrentArtifact artifact);
+    string ConstructTorrentPathFromArtifact(TorrentArtifact torrent);
 }

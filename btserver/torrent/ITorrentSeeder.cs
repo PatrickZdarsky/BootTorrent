@@ -1,8 +1,10 @@
-﻿using boottorrent_lib.torrent;
+using System.Net;
 
 namespace btserver.torrent;
 
 public interface ITorrentSeeder
 {
-    Task SeedArtifacts(List<TorrentArtifact> artifacts);
+    Task<List<string>> GetSeededTorrents();
+    
+    Task<IPEndPoint> GetClientEndpoint();
 }

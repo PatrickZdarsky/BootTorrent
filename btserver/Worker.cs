@@ -1,29 +1,26 @@
+using boottorrent_lib.torrent;
 using btserver.torrent;
 
 namespace btserver;
 
-public class Worker : BackgroundService
+public class Worker(ILogger<Worker> logger, ITorrentCreator torrentCreator, ITorrentSeederService torrentSeederService, ITorrentArtifactRegistry registry) : BackgroundService
 {
-    private readonly ILogger<Worker> _logger;
-    
-    private readonly ITorrentCreator _torrentCreator;
-
-    public Worker(ILogger<Worker> logger, ITorrentCreator torrentCreator)
-    {
-        _logger = logger;
-        _torrentCreator = torrentCreator;
-    }
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _torrentCreator.GenerateTorrentArtifactAsync("SC_Contract", "ShiftControl Contract",
-            "..\\app\\ShiftControl-Contract.pdf");
+        await Task.Delay(1000, stoppingToken);
+        var artifact = (await registry.GetRegisteredArtifacts()).Values.FirstOrDefault();
+        if (artifact is not null)
+        {
+            logger.LogInformation("Seeding existing artifact with ID '{ArtifactId}' and name '{Name}'", artifact.ID, artifact.Name);
+            await torrentSeederService.EnsureSeedingAsync(artifact.ID, stoppingToken);
+        }
+        
         
         while (!stoppingToken.IsCancellationRequested)
         {
-            if (_logger.IsEnabled(LogLevel.Information))
+            if (logger.IsEnabled(LogLevel.Information))
             {
-                _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
+                logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
             }
 
             await Task.Delay(1000, stoppingToken);

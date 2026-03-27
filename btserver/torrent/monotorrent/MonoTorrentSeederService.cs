@@ -6,9 +6,9 @@ using MonoTorrent;
 using MonoTorrent.Client;
 using Microsoft.Extensions.Logging;
 
-public class MonoTorrentSeeder(
+public class MonoTorrentSeederService(
     ITorrentArtifactRegistry artifactRegistry,
-    ILogger<MonoTorrentSeeder> logger) : IHostedService, IDisposable
+    ILogger<MonoTorrentSeederService> logger) : ITorrentSeederService, ITorrentSeeder, IDisposable
 {
     private readonly ConcurrentDictionary<string, TorrentManager> _managers = new();
     private readonly SemaphoreSlim _sync = new(1, 1);
@@ -16,7 +16,7 @@ public class MonoTorrentSeeder(
     private ClientEngine? _engine;
     private bool _disposed;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
 
@@ -26,7 +26,7 @@ public class MonoTorrentSeeder(
         {
             ListenEndPoints = new Dictionary<string, IPEndPoint>
             {
-                ["ipv4"] = new IPEndPoint(IPAddress.Any, 55123)
+                ["ipv4"] = await GetClientEndpoint()
             },
 
             AllowPortForwarding = false,
@@ -37,9 +37,7 @@ public class MonoTorrentSeeder(
 
         _engine = new ClientEngine(settings);
 
-        logger.LogInformation("MonoTorrent engine started");
-
-        return Task.CompletedTask;
+        logger.LogInformation("MonoTorrent seeding engine started");
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
@@ -47,7 +45,7 @@ public class MonoTorrentSeeder(
         if (_engine is null)
             return;
 
-        logger.LogInformation("Stopping MonoTorrent engine");
+        logger.LogInformation("Stopping MonoTorrent seeding engine");
 
         foreach (var manager in _managers.Values)
         {
@@ -66,7 +64,7 @@ public class MonoTorrentSeeder(
         _engine.Dispose();
         _engine = null;
 
-        logger.LogInformation("MonoTorrent engine stopped");
+        logger.LogInformation("MonoTorrent seeding engine stopped");
     }
 
     /// <summary>
@@ -96,8 +94,8 @@ public class MonoTorrentSeeder(
 
             logger.LogInformation("Ensuring artifact '{ArtifactId}' is seeding", artifactId);
 
-            var torrentPath = await artifactRegistry.GetTorrentFilePathAsync(artifactId, cancellationToken);
-            var dataPath = await artifactRegistry.GetArtifactContentPathAsync(artifactId, cancellationToken);
+            var torrentPath = await artifactRegistry.GetTorrentFilePathAsync(artifactId);
+            var dataPath = await artifactRegistry.GetArtifactContentPathAsync(artifactId);
 
             var torrent = await Torrent.LoadAsync(torrentPath);
             var manager = await _engine.AddAsync(torrent, dataPath);
@@ -144,5 +142,16 @@ public class MonoTorrentSeeder(
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+    }
+
+    public Task<List<string>> GetSeededTorrents()
+    {
+        return Task.FromResult(_managers.Keys.ToList());
+    }
+
+    public Task<IPEndPoint> GetClientEndpoint()
+    {
+        //Todo: Make me configureable
+        return Task.FromResult(new IPEndPoint(IPAddress.Any, 55123));
     }
 }

@@ -3,6 +3,7 @@ using boottorrent_lib.communication.codec;
 using btserver;
 using btserver.settings;
 using btserver.torrent;
+using btserver.torrent.impl;
 using btserver.torrent.monotorrent;
 using btserver.transport;
 using Serilog;
@@ -18,8 +19,7 @@ builder.Services.AddSerilog();
 
 //Config
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
-builder.Services.Configure<ArtifactSettings>(builder.Configuration.GetSection("artifacts"));
-builder.Services.Configure<TrackerSettings>(builder.Configuration.GetSection("tracker"));
+builder.Services.Configure<TorrentSettings>(builder.Configuration.GetSection("Torrent"));
 
 //Setup MQTT
 builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
@@ -39,17 +39,17 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerMqttService>
 
 //Torrent / Artifact Management
 builder.Services.AddSingleton<ITorrentCreator, MonoTorrentCreator>();
-
+builder.Services.AddSingleton<TorrentArtifactRegistry>();
+builder.Services.AddSingleton<ITorrentArtifactRegistry>(sp => sp.GetRequiredService<TorrentArtifactRegistry>());
+builder.Services.AddSingleton<ITorrentAccessPolicy, TorrentAccessPolicy>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TorrentArtifactRegistry>());
+builder.Services.AddSingleton<ITorrentSeederService, MonoTorrentSeederService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ITorrentSeederService>());
 
 builder.Services.AddHostedService<Worker>();
 
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
- var creator = scope.ServiceProvider.GetRequiredService<ITorrentCreator>();
- await creator.LoadExistingArtifactsAsync();
-}
-
 app.Run();
+

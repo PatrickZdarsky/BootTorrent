@@ -11,7 +11,7 @@ namespace btserver.torrent.monotorrent;
 
 public sealed class MonoTorrentTracker : IHostedService, IDisposable
 {
-    private readonly IOptions<TrackerSettings> _settings;
+    private readonly IOptions<TorrentSettings> _settings;
     private readonly ITorrentAccessPolicy _accessPolicy;
     private readonly ILogger<MonoTorrentTracker> _logger;
 
@@ -23,7 +23,7 @@ public sealed class MonoTorrentTracker : IHostedService, IDisposable
     private bool _disposed;
 
     public MonoTorrentTracker(
-        IOptions<TrackerSettings> settings,
+        IOptions<TorrentSettings> settings,
         ITorrentAccessPolicy accessPolicy,
         ILogger<MonoTorrentTracker> logger)
     {
@@ -60,6 +60,11 @@ public sealed class MonoTorrentTracker : IHostedService, IDisposable
         // Important: subscribe BEFORE RegisterListener so our handler gets the chance
         // to register/deny torrents before TrackerServer processes the announce.
         _listener.AnnounceReceived += OnAnnounceReceived;
+        _listener.ScrapeReceived += (s, e) =>
+        {
+            // Deny all scrape requests since we don't want to expose torrent statistics.
+            e.Response[TrackerRequest.FailureKey] = new BEncodedString("Scrape is not supported.");
+        };
 
         _trackerServer.RegisterListener(_listener);
         _listener.Start();
@@ -189,13 +194,13 @@ public sealed class MonoTorrentTracker : IHostedService, IDisposable
         }
     }
 
-    private static string BuildAnnounceUrl(TrackerSettings settings)
+    private static string BuildAnnounceUrl(TorrentSettings settings)
     {
-        var host = string.IsNullOrWhiteSpace(settings.BindAddress)
+        var host = string.IsNullOrWhiteSpace(settings.TrackerBindAddress)
             ? "0.0.0.0"
-            : settings.BindAddress;
+            : settings.TrackerBindAddress;
 
-        return $"http://{host}:{settings.Port}/announce/";
+        return $"http://{host}:{settings.TrackerPort}/announce/";
     }
 
     private static string ExtractClientId(BEncodedString peerId)

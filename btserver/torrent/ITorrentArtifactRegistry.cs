@@ -5,8 +5,9 @@ namespace btserver.torrent;
 
 public interface ITorrentArtifactRegistry
 {
+    Task<Dictionary<string, TorrentArtifact>> GetRegisteredArtifacts();
     Task<TorrentArtifact> CreateAndRegisterTorrentAsync(string name, string description, string filePath, CancellationToken cancellationToken);
-    Task<TorrentArtifact> GetArtifactByIdAsync(string artifactId, CancellationToken cancellationToken);
-    Task<string> GetTorrentFilePathAsync(string artifactId, CancellationToken cancellationToken);
-    Task<string> GetArtifactContentPathAsync(string artifactId, CancellationToken cancellationToken);
+    Task<TorrentArtifact> GetArtifactByIdAsync(string artifactId);
+    Task<string> GetTorrentFilePathAsync(string artifactId);
+    Task<string> GetArtifactContentPathAsync(string artifactId);
 }
