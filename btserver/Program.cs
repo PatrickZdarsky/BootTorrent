@@ -42,9 +42,14 @@ builder.Services.AddSingleton<ITorrentCreator, MonoTorrentCreator>();
 builder.Services.AddSingleton<TorrentArtifactRegistry>();
 builder.Services.AddSingleton<ITorrentArtifactRegistry>(sp => sp.GetRequiredService<TorrentArtifactRegistry>());
 builder.Services.AddSingleton<ITorrentAccessPolicy, TorrentAccessPolicy>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<TorrentArtifactRegistry>());
-builder.Services.AddSingleton<ITorrentSeederService, MonoTorrentSeederService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<ITorrentSeederService>());
+builder.Services.AddSingleton<ISeederRegistry, SeederRegistry>();
+builder.Services.AddSingleton<MonoTorrentTracker>();
+builder.Services.AddSingleton<ITorrentTracker>(sp => sp.GetRequiredService<MonoTorrentTracker>());
+builder.Services.AddSingleton<ITorrentSeederRegistry>(sp => sp.GetRequiredService<MonoTorrentTracker>());
+
+builder.Services.AddSingleton<MonoTorrentSeederService>();
+builder.Services.AddSingleton<ITorrentSeeder>(sp => sp.GetRequiredService<MonoTorrentSeederService>());
+builder.Services.AddSingleton<ITorrentSeederService>(sp => sp.GetRequiredService<MonoTorrentSeederService>());
 
 builder.Services.AddHostedService<Worker>();
 

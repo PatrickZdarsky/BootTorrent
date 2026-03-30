@@ -10,4 +10,7 @@ public interface ITorrentArtifactRegistry
     Task<TorrentArtifact> GetArtifactByIdAsync(string artifactId);
     Task<string> GetTorrentFilePathAsync(string artifactId);
     Task<string> GetArtifactContentPathAsync(string artifactId);
+    
+    event EventHandler<TorrentArtifact> ArtifactRegistered;
+    event EventHandler<TorrentArtifact> ArtifactUnRegistered;
 }

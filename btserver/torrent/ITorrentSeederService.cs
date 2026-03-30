@@ -2,7 +2,7 @@
 
 namespace btserver.torrent;
 
-public interface ITorrentSeederService : IHostedService
+public interface ITorrentSeederService
 {
     Task EnsureSeedingAsync(string artifactId, CancellationToken cancellationToken = default);
 }

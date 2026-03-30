@@ -6,11 +6,15 @@ namespace btserver.torrent.impl;
 public class TorrentArtifactRegistry(
     ILogger<TorrentArtifactRegistry> logger,
     ITorrentCreator torrentCreator
-    ) : ITorrentArtifactRegistry, IHostedService
+    ) : ITorrentArtifactRegistry
 {
+    public event EventHandler<TorrentArtifact>? ArtifactRegistered;
+    public event EventHandler<TorrentArtifact>? ArtifactUnRegistered;
+    
     private readonly ConcurrentDictionary<string, TorrentArtifact> _artifacts = new();
     private readonly SemaphoreSlim _sync = new(1, 1);
 
+    //Todo: Add ways to unregister artifacts
 
     public Task<Dictionary<string, TorrentArtifact>> GetRegisteredArtifacts()
     {
@@ -24,6 +28,7 @@ public class TorrentArtifactRegistry(
             var artifact = await torrentCreator.GenerateTorrentArtifactAsync(name, description, filePath);
             
             _artifacts[artifact.ID] = artifact;
+            ArtifactRegistered?.Invoke(this, artifact);
 
             logger.LogInformation("Registered torrent artifact with ID '{ArtifactId}' for '{Name}'", artifact.ID, name);
             return artifact;
@@ -59,6 +64,7 @@ public class TorrentArtifactRegistry(
         {
             if (_artifacts.TryAdd(artifact.ID, artifact))
             {
+                ArtifactRegistered?.Invoke(this, artifact);
                 logger.LogInformation("Registered pre-existing torrent artifact with ID '{ArtifactId}' for '{Name}'", artifact.ID, artifact.Name);
             }
         }

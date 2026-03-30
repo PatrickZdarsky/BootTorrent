@@ -15,7 +15,7 @@ public interface ITorrentAccessPolicy
     /// Used to check if a client is allowed to access a specific torrent, this is used by the TorrentSeeder before allowing a client to download a torrent from the server
     /// </summary>
     /// <param name="clientId"></param>
-    /// <param name="torrentName"></param>
+    /// <param name="torrentInfoHash"></param>
     /// <returns></returns>
-    Task<bool> CanAccess(string clientId, string torrentName);
+    Task<bool> CanAccessInfoHash(string clientId, string torrentInfoHash);
 }

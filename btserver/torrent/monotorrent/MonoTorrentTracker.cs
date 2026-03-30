@@ -9,10 +9,12 @@ using MonoTorrent.TrackerServer;
 
 namespace btserver.torrent.monotorrent;
 
-public sealed class MonoTorrentTracker : IHostedService, IDisposable
+public sealed class MonoTorrentTracker : IDisposable, ITorrentSeederRegistry, ITorrentTracker
 {
     private readonly IOptions<TorrentSettings> _settings;
     private readonly ITorrentAccessPolicy _accessPolicy;
+    private readonly ITorrentArtifactRegistry _artifactRegistry;
+    private readonly ISeederRegistry _seederRegistry;
     private readonly ILogger<MonoTorrentTracker> _logger;
 
     private readonly SemaphoreSlim _announceLock = new(1, 1);
@@ -25,11 +27,81 @@ public sealed class MonoTorrentTracker : IHostedService, IDisposable
     public MonoTorrentTracker(
         IOptions<TorrentSettings> settings,
         ITorrentAccessPolicy accessPolicy,
-        ILogger<MonoTorrentTracker> logger)
+        ISeederRegistry seederRegistry,
+        ILogger<MonoTorrentTracker> logger, 
+        ITorrentArtifactRegistry artifactRegistry)
     {
         _settings = settings;
         _accessPolicy = accessPolicy;
+        _seederRegistry = seederRegistry;
         _logger = logger;
+        _artifactRegistry = artifactRegistry;
+        
+        _artifactRegistry.ArtifactRegistered += async (sender, artifact) =>
+        {
+            try
+            {
+                await RegisterArtifact(artifact);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Failed to register newly added artifact with ID '{ArtifactId}' to tracker", artifact.ID);
+            }
+        };
+        _artifactRegistry.ArtifactUnRegistered += async (sender, artifact) =>
+        {
+            try
+            {
+                await UnregisterArtifact(artifact);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Failed to unregister removed artifact with ID '{ArtifactId}' from tracker", artifact.ID);
+            }
+        };
+    }
+
+    private async Task UnregisterArtifact(TorrentArtifact artifact)
+    {
+        if (_trackerServer is null)
+            throw new InvalidOperationException("Tracker server is not initialized.");
+
+        var normalized = NormalizeInfoHash(artifact.InfoHash);
+        if (!_registeredTorrents.ContainsKey(normalized))
+            return;
+
+        await _announceLock.WaitAsync();
+        try
+        {
+            if (!_registeredTorrents.ContainsKey(normalized))
+                return;
+
+            _trackerServer.Remove(_registeredTorrents[normalized]);
+            _registeredTorrents.TryRemove(normalized, out _);
+            _logger.LogInformation(
+                "Unregistered torrent {TorrentName} ({InfoHash}) from MonoTorrent tracker",
+                artifact.Name,
+                artifact.InfoHash);
+        }
+        finally
+        {
+            _announceLock.Release();
+        }
+    }
+
+    public void RegisterSeeder(ITorrentSeeder seeder)
+    {
+        _seederRegistry.RegisterSeeder(seeder);
+    }
+
+    public void UnregisterSeeder(ITorrentSeeder seeder)
+    {
+        _seederRegistry.UnregisterSeeder(seeder);
+    }
+
+    public async Task RegisterArtifact(TorrentArtifact artifact)
+    {
+        await EnsureTrackableRegisteredAsync(artifact);
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -118,35 +190,78 @@ public sealed class MonoTorrentTracker : IHostedService, IDisposable
                 SetFailure(request, "Unable to derive client id from peer_id.");
                 return;
             }
+            
+            _logger.LogInformation(
+                "Received announce from peer {clientId} ({PeerId}) for torrent with InfoHash {InfoHash}",
+                clientId,
+                request.PeerId,
+                request.InfoHash?.ToHex());
 
             var requestedInfoHash = request.InfoHash.ToHex();
-            var availableTorrents = await _accessPolicy.GetAvailableTorrentsAsync(clientId);
-
-            var allowedTorrent = availableTorrents
-                .FirstOrDefault(t => string.Equals(
-                    NormalizeInfoHash(t.InfoHash),
-                    NormalizeInfoHash(requestedInfoHash),
-                    StringComparison.OrdinalIgnoreCase));
-
-            if (allowedTorrent is null)
+            if (!await _accessPolicy.CanAccessInfoHash(clientId, requestedInfoHash))
             {
                 _logger.LogWarning(
-                    "Rejecting announce for client {ClientId}. InfoHash {InfoHash} is not allowed.",
+                    "Rejecting announce for client {ClientId}. Access to torrent with InfoHash {InfoHash} is denied by policy.",
                     clientId,
                     requestedInfoHash);
 
                 SetFailure(request, "This client is not allowed to access the requested torrent.");
                 return;
             }
+            
+            var trackableArtifact = _registeredTorrents.Values.FirstOrDefault(t => string.Equals(
+                NormalizeInfoHash(t.InfoHash.ToHex()),
+                NormalizeInfoHash(requestedInfoHash),
+                StringComparison.OrdinalIgnoreCase));
+            
+            if (trackableArtifact is null)            
+            {
+                _logger.LogWarning(
+                    "Rejecting announce for client {ClientId}. Torrent with InfoHash {InfoHash} is not registered.",
+                    clientId,
+                    requestedInfoHash);
 
-            // Ensure the torrent is registered before TrackerServer handles the announce.
-            await EnsureTrackableRegisteredAsync(allowedTorrent);
+                SetFailure(request, "Requested torrent is not available on this tracker.");
+                return;
+            }
+
+            var artifact = trackableArtifact.Source;
+
+            var seeders = await _seederRegistry.GetSeedersForTorrent(artifact.InfoHash);
+            if (seeders.Count == 0)
+            {
+                _logger.LogWarning("No seeders found for torrent {TorrentName} ({InfoHash})",
+                    artifact.Name,
+                    artifact.InfoHash);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Found {SeederCount} seeders for torrent {TorrentName} ({InfoHash})",
+                    seeders.Count,
+                    artifact.Name,
+                    artifact.InfoHash);
+
+                var peers = new BEncodedList();
+                seeders.ForEach(s =>
+                {
+                    var endpoint = s.GetClientEndpoint();
+                    var peerDict = new BEncodedDictionary
+                    {
+                        ["ip"] = new BEncodedString(endpoint.Address.ToString()),
+                        ["port"] = new BEncodedNumber(endpoint.Port)
+                    };
+                    peers.Add(peerDict);
+                });
+
+                request.Response["peers"] = peers;
+            }
 
             _logger.LogDebug(
                 "Accepted announce for client {ClientId}, torrent {TorrentName} ({InfoHash})",
                 clientId,
-                allowedTorrent.Name,
-                allowedTorrent.InfoHash);
+                artifact.Name,
+                artifact.InfoHash);
         }
         catch (Exception ex)
         {
@@ -197,7 +312,7 @@ public sealed class MonoTorrentTracker : IHostedService, IDisposable
     private static string BuildAnnounceUrl(TorrentSettings settings)
     {
         var host = string.IsNullOrWhiteSpace(settings.TrackerBindAddress)
-            ? "0.0.0.0"
+            ? "*"
             : settings.TrackerBindAddress;
 
         return $"http://{host}:{settings.TrackerPort}/announce/";

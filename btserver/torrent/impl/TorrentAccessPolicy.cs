@@ -9,7 +9,7 @@ public class TorrentAccessPolicy(ITorrentArtifactRegistry registry) : ITorrentAc
         return (await registry.GetRegisteredArtifacts()).Values.ToList();
     }
 
-    public Task<bool> CanAccess(string clientId, string torrentName)
+    public Task<bool> CanAccessInfoHash(string clientId, string torrentInfoHash)
     {
         return Task.FromResult(true);
     }

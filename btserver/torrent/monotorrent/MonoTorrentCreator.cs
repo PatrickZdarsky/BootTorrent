@@ -114,7 +114,7 @@ public class MonoTorrentCreator : ITorrentCreator
             Name = name,
             torrent = new TorrentDescriptor()
             {
-                InfoHash = torrent.InfoHashes.V2!.ToHex(),
+                InfoHash = torrent.InfoHashes.V1!.ToHex(),
                 TorrentFileBytes = torrentFileBytes
             },
             integritySpec = new IntegritySpec()
