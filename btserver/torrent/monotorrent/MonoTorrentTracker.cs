@@ -36,7 +36,8 @@ public sealed class MonoTorrentTracker : IDisposable, ITorrentSeederRegistry, IT
         _seederRegistry = seederRegistry;
         _logger = logger;
         _artifactRegistry = artifactRegistry;
-        
+
+        return;
         _artifactRegistry.ArtifactRegistered += async (sender, artifact) =>
         {
             try
@@ -66,7 +67,7 @@ public sealed class MonoTorrentTracker : IDisposable, ITorrentSeederRegistry, IT
         if (_trackerServer is null)
             throw new InvalidOperationException("Tracker server is not initialized.");
 
-        var normalized = NormalizeInfoHash(artifact.InfoHash);
+        var normalized = NormalizeInfoHash(artifact.InfoHashV1);
         if (!_registeredTorrents.ContainsKey(normalized))
             return;
 
@@ -81,7 +82,7 @@ public sealed class MonoTorrentTracker : IDisposable, ITorrentSeederRegistry, IT
             _logger.LogInformation(
                 "Unregistered torrent {TorrentName} ({InfoHash}) from MonoTorrent tracker",
                 artifact.Name,
-                artifact.InfoHash);
+                artifact.InfoHashV1);
         }
         finally
         {
@@ -192,76 +193,19 @@ public sealed class MonoTorrentTracker : IDisposable, ITorrentSeederRegistry, IT
             }
             
             _logger.LogInformation(
-                "Received announce from peer {clientId} ({PeerId}) for torrent with InfoHash {InfoHash}",
+                "Received {eventType} announce from peer {clientId} ({PeerId}) for torrent with InfoHash {InfoHash}",
+                request.Event.ToString() ?? "unknown",
                 clientId,
                 request.PeerId,
                 request.InfoHash?.ToHex());
 
-            var requestedInfoHash = request.InfoHash.ToHex();
-            if (!await _accessPolicy.CanAccessInfoHash(clientId, requestedInfoHash))
-            {
-                _logger.LogWarning(
-                    "Rejecting announce for client {ClientId}. Access to torrent with InfoHash {InfoHash} is denied by policy.",
-                    clientId,
-                    requestedInfoHash);
-
-                SetFailure(request, "This client is not allowed to access the requested torrent.");
-                return;
-            }
-            
-            var trackableArtifact = _registeredTorrents.Values.FirstOrDefault(t => string.Equals(
-                NormalizeInfoHash(t.InfoHash.ToHex()),
-                NormalizeInfoHash(requestedInfoHash),
-                StringComparison.OrdinalIgnoreCase));
-            
-            if (trackableArtifact is null)            
-            {
-                _logger.LogWarning(
-                    "Rejecting announce for client {ClientId}. Torrent with InfoHash {InfoHash} is not registered.",
-                    clientId,
-                    requestedInfoHash);
-
-                SetFailure(request, "Requested torrent is not available on this tracker.");
-                return;
-            }
-
-            var artifact = trackableArtifact.Source;
-
-            var seeders = await _seederRegistry.GetSeedersForTorrent(artifact.InfoHash);
-            if (seeders.Count == 0)
-            {
-                _logger.LogWarning("No seeders found for torrent {TorrentName} ({InfoHash})",
-                    artifact.Name,
-                    artifact.InfoHash);
-            }
-            else
-            {
-                _logger.LogInformation(
-                    "Found {SeederCount} seeders for torrent {TorrentName} ({InfoHash})",
-                    seeders.Count,
-                    artifact.Name,
-                    artifact.InfoHash);
-
-                var peers = new BEncodedList();
-                seeders.ForEach(s =>
-                {
-                    var endpoint = s.GetClientEndpoint();
-                    var peerDict = new BEncodedDictionary
-                    {
-                        ["ip"] = new BEncodedString(endpoint.Address.ToString()),
-                        ["port"] = new BEncodedNumber(endpoint.Port)
-                    };
-                    peers.Add(peerDict);
-                });
-
-                request.Response["peers"] = peers;
-            }
+            var artifact = await HandleStartEvent(request, clientId);
 
             _logger.LogDebug(
                 "Accepted announce for client {ClientId}, torrent {TorrentName} ({InfoHash})",
                 clientId,
                 artifact.Name,
-                artifact.InfoHash);
+                artifact.InfoHashV1);
         }
         catch (Exception ex)
         {
@@ -270,37 +214,114 @@ public sealed class MonoTorrentTracker : IDisposable, ITorrentSeederRegistry, IT
         }
     }
 
+    private async Task<TorrentArtifact> HandleStartEvent(AnnounceRequest request, string clientId)
+    {
+        var requestedInfoHash = request.InfoHash.ToHex();
+        if (!await _accessPolicy.CanAccessInfoHash(clientId, requestedInfoHash))
+        {
+            _logger.LogWarning(
+                "Rejecting announce for client {ClientId}. Access to torrent with InfoHash {InfoHash} is denied by policy.",
+                clientId,
+                requestedInfoHash);
+
+            SetFailure(request, "This client is not allowed to access the requested torrent.");
+            return null;
+        }
+            
+        // var trackableArtifact = _registeredTorrents.Values.FirstOrDefault(t => string.Equals(
+        //     NormalizeInfoHash(t.InfoHash.ToHex()),
+        //     NormalizeInfoHash(requestedInfoHash),
+        //     StringComparison.OrdinalIgnoreCase));
+
+        var trackableArtifact = _registeredTorrents.Values.FirstOrDefault(t => t.InfoHash.ToHex().StartsWith(requestedInfoHash));
+            
+        if (trackableArtifact is null)            
+        {
+            _logger.LogWarning(
+                "Rejecting announce for client {ClientId}. Torrent with InfoHash {InfoHash} is not registered.",
+                clientId,
+                requestedInfoHash);
+
+            SetFailure(request, "Requested torrent is not available on this tracker.");
+            return null;
+        }
+
+        var artifact = trackableArtifact.Source;
+
+        var seeders = await _seederRegistry.GetSeedersForTorrent(artifact.InfoHashV1);
+        if (seeders.Count == 0)
+        {
+            _logger.LogWarning("No seeders found for torrent {TorrentName} ({InfoHash})",
+                artifact.Name,
+                artifact.InfoHashV1);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Found {SeederCount} seeders for torrent {TorrentName} ({InfoHash})",
+                seeders.Count,
+                artifact.Name,
+                artifact.InfoHashV1);
+
+            var peers = new BEncodedList();
+            seeders.ForEach(s =>
+            {
+                var endpoint = s.GetClientEndpoint();
+                var peerDict = new BEncodedDictionary
+                {
+                    ["ip"] = new BEncodedString(endpoint.Address.ToString()),
+                    ["port"] = new BEncodedNumber(endpoint.Port)
+                };
+                peers.Add(peerDict);
+            });
+
+            request.Response["peers"] = peers;
+            request.Response["interval"] = new BEncodedNumber(5);
+            request.Response["complete"] = new BEncodedNumber(seeders.Count);
+            request.Response["incomplete"] = new BEncodedNumber(0);
+        }
+
+        return artifact;
+    }
+
+
     private async Task EnsureTrackableRegisteredAsync(TorrentArtifact torrent)
     {
         if (_trackerServer is null)
             throw new InvalidOperationException("Tracker server is not initialized.");
 
-        var normalized = NormalizeInfoHash(torrent.InfoHash);
-        if (_registeredTorrents.ContainsKey(normalized))
+        var normalizedV1 = NormalizeInfoHash(torrent.InfoHashV1);
+        var normalizedV2 = NormalizeInfoHash(torrent.InfoHashV2);
+            
+        if (_registeredTorrents.ContainsKey(normalizedV1))
             return;
 
         await _announceLock.WaitAsync();
         try
         {
-            if (_registeredTorrents.ContainsKey(normalized))
+            if (_registeredTorrents.ContainsKey(normalizedV1))
                 return;
 
-            var trackable = new TorrentArtifactTrackable(torrent);
+            var trackableV1 = new TorrentArtifactTrackable(torrent, InfoHash.FromHex(torrent.InfoHashV1));
+            var trackableV2 = new TorrentArtifactTrackable(torrent, InfoHash.FromHex(torrent.InfoHashV2));
 
-            if (_trackerServer.Add(trackable))
+            if (_trackerServer.Add(trackableV1) || _trackerServer.Add(trackableV2))
             {
-                _registeredTorrents[normalized] = trackable;
+                _registeredTorrents[normalizedV1] = trackableV1;
+                _registeredTorrents[normalizedV2] = trackableV2;
 
                 _logger.LogInformation(
-                    "Registered torrent {TorrentName} ({InfoHash}) with MonoTorrent tracker",
+                    "Registered torrent {TorrentName} ({InfoHashV1}/{InfoHashV2}) with MonoTorrent tracker",
                     torrent.Name,
-                    torrent.InfoHash);
+                    torrent.InfoHashV1,
+                    torrent.InfoHashV2);
             }
             else
             {
                 // Add returns false if it is already known or not accepted.
                 // Re-check presence to avoid false negatives in races.
-                _registeredTorrents.TryAdd(normalized, trackable);
+                _registeredTorrents.TryAdd(normalizedV1, trackableV1);
+                _registeredTorrents.TryAdd(normalizedV2, trackableV2);
             }
         }
         finally
@@ -366,11 +387,11 @@ public sealed class MonoTorrentTracker : IDisposable, ITorrentSeederRegistry, IT
 
         public TorrentArtifact Source { get; }
 
-        public TorrentArtifactTrackable(TorrentArtifact source)
+        public TorrentArtifactTrackable(TorrentArtifact source, InfoHash infoHash)
         {
             Source = source;
             Name = source.Name;
-            InfoHash = InfoHash.FromHex(source.InfoHash);
+            InfoHash = infoHash;
         }
     }
 }

@@ -5,13 +5,14 @@ using btserver.torrent.monotorrent;
 
 namespace btserver;
 
-public class Worker(ILogger<Worker> logger, MonoTorrentSeederService seeder, MonoTorrentTracker tracker, TorrentArtifactRegistry registry) : BackgroundService
+public class Worker(ILogger<Worker> logger, MonoTorrentSeederService seeder, TrackerServer trackerServer, MonoTorrentTracker tracker, TorrentArtifactRegistry registry) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await seeder.StartAsync(stoppingToken);
-        await tracker.StartAsync(stoppingToken);
+        // await tracker.StartAsync(stoppingToken);
         await registry.StartAsync(stoppingToken);
+        await trackerServer.Start(stoppingToken);
         
         var artifact = (await registry.GetRegisteredArtifacts()).Values.FirstOrDefault();
         if (artifact is not null)

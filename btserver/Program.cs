@@ -46,6 +46,7 @@ builder.Services.AddSingleton<ISeederRegistry, SeederRegistry>();
 builder.Services.AddSingleton<MonoTorrentTracker>();
 builder.Services.AddSingleton<ITorrentTracker>(sp => sp.GetRequiredService<MonoTorrentTracker>());
 builder.Services.AddSingleton<ITorrentSeederRegistry>(sp => sp.GetRequiredService<MonoTorrentTracker>());
+builder.Services.AddSingleton<TrackerServer>();
 
 builder.Services.AddSingleton<MonoTorrentSeederService>();
 builder.Services.AddSingleton<ITorrentSeeder>(sp => sp.GetRequiredService<MonoTorrentSeederService>());

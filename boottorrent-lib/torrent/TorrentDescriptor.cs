@@ -2,6 +2,8 @@
 
 public sealed class TorrentDescriptor
 {
-    public string InfoHash { get; init; } = default!; // hex/base32—your format
+    public string InfoHashV1 { get; init; } = default!;
+    public string InfoHashV2 { get; init; } = default!;
+    
     public byte[] TorrentFileBytes { get; init; } = default!; // raw .torrent file bytes
 }

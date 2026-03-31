@@ -220,7 +220,13 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
 
     public Task<List<string>> GetSeededTorrents()
     {
-        return Task.FromResult(_managers.Keys.ToList());
+        var hashes = new List<string>();
+        foreach (var manager in _managers.Values)
+        {
+            hashes.Add(manager.InfoHashes.V1!.ToHex());
+            hashes.Add(manager.InfoHashes.V2!.ToHex());
+        }
+        return Task.FromResult(hashes);
     }
 
     public string getClientId()
