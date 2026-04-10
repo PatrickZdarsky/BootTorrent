@@ -12,7 +12,7 @@ public class Worker(ILogger<Worker> logger, MonoTorrentSeederService seeder, Tra
         await seeder.StartAsync(stoppingToken);
         // await tracker.StartAsync(stoppingToken);
         await registry.StartAsync(stoppingToken);
-        await trackerServer.Start(stoppingToken);
+        trackerServer.Start(stoppingToken);
         
         var artifact = (await registry.GetRegisteredArtifacts()).Values.FirstOrDefault();
         if (artifact is not null)
@@ -31,5 +31,13 @@ public class Worker(ILogger<Worker> logger, MonoTorrentSeederService seeder, Tra
 
             await Task.Delay(1000, stoppingToken);
         }
+
+        
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        trackerServer.Stop();
+        await base.StopAsync(cancellationToken);
     }
 }

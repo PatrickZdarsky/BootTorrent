@@ -1,8 +1,7 @@
 using System.Net;
 using System.Collections.Concurrent;
-using System.Text;
-using Microsoft.Extensions.Logging;
 using MonoTorrent.BEncoding;
+using Microsoft.Extensions.Logging;
 
 namespace btserver.torrent.impl;
 
@@ -12,8 +11,16 @@ public class TrackerServer
     private readonly string _listeningUri;
     private readonly ConcurrentDictionary<string, Torrent> _torrents = new();
     private readonly ILogger<TrackerServer> _logger;
+    private CancellationTokenSource? _cancellationTokenSource;
 
-    public TrackerServer(ILogger<TrackerServer> logger, string listeningUri = "http://localhost:6969/announce/")
+    /*
+     *  Todo:
+     *  - Add a watchdog to time-out peers which haven't announced in a while (e.g. 30 minutes) to prevent stale peers from accumulating.
+     *  - Check requests properly (No IPv6, GET, etc.)
+     *  - Add ability to add more logic to which peers are returned (for the actual use-case of this project)
+     */
+    
+    public TrackerServer(ILogger<TrackerServer> logger, string listeningUri = "http://+:6969/announce/")
     {
         _logger = logger;
         _listeningUri = listeningUri;
@@ -21,33 +28,56 @@ public class TrackerServer
         _listener.Prefixes.Add(_listeningUri);
     }
 
-    public async Task Start(CancellationToken cancellationToken = default)
+    public void Start(CancellationToken cancellationToken = default)
     {
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _listener.Start();
         _logger.LogInformation("Listening for requests on {ListeningUri}", _listeningUri);
+        Task.Run(() => ListenAsync(_cancellationTokenSource.Token), _cancellationTokenSource.Token);
+    }
 
+    private async Task ListenAsync(CancellationToken cancellationToken)
+    {
         try
         {
-            while (_listener.IsListening)
+            while (_listener.IsListening && !cancellationToken.IsCancellationRequested)
             {
                 var context = await _listener.GetContextAsync();
-                // In the next step, we will process the request here.
                 ProcessRequest(context);
             }
         }
         catch (HttpListenerException ex)
         {
-            _logger.LogWarning(ex, "HttpListenerException occurred, listener is stopping.");
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "HttpListenerException occurred, listener is stopping.");
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "An unexpected error occurred in the listener loop.");
+            }
+        }
+        finally
+        {
+            if (_listener.IsListening)
+            {
+                _listener.Stop();
+            }
         }
     }
     
-    public async Task Stop(CancellationToken cancellationToken = default)
+    public void Stop(CancellationToken cancellationToken = default)
     {
         if (_listener.IsListening)
         {
             _logger.LogInformation("Stopping tracker server.");
+            _cancellationTokenSource?.Cancel();
             _listener.Stop();
             _listener.Close();
+            _cancellationTokenSource?.Dispose();
         }
     }
 
@@ -55,67 +85,22 @@ public class TrackerServer
     {
         var request = context.Request;
         var response = context.Response;
-        
-        _logger.LogDebug("Processing request from {RemoteEndPoint}", request.RemoteEndPoint);
 
         try
         {
-            var query = request.QueryString;
-
-            var infoHash = query["info_hash"];
-            var peerId = query["peer_id"];
-            var portStr = query["port"];
-            var uploadedStr = query["uploaded"];
-            var downloadedStr = query["downloaded"];
-            var leftStr = query["left"];
-            var eventStr = query["event"];
-
-            _logger.LogDebug("Request parameters: info_hash={InfoHash}, peer_id={PeerId}, port={Port}, uploaded={Uploaded}, downloaded={Downloaded}, left={Left}, event={Event}", 
-                infoHash, peerId, portStr, uploadedStr, downloadedStr, leftStr, eventStr);
-
-            if (string.IsNullOrEmpty(infoHash) || string.IsNullOrEmpty(peerId) || !int.TryParse(portStr, out var port) ||
-                !long.TryParse(uploadedStr, out var uploaded) || !long.TryParse(downloadedStr, out var downloaded) || !long.TryParse(leftStr, out var left))
+            if (!AnnounceRequest.TryParse(request, out var announceRequest))
             {
                 _logger.LogWarning("Missing or invalid required parameters from {RemoteEndPoint}", request.RemoteEndPoint);
                 Error(response, "Missing or invalid required parameters.");
                 return;
             }
             
-            var remoteEndpoint = request.RemoteEndPoint;
-            var peer = new Peer(peerId, new IPEndPoint(remoteEndpoint.Address, port), uploaded, downloaded, left);
+            //_logger.LogInformation("Request parameters: info_hash={InfoHash}, peer_id={PeerId}, port={Port}, uploaded={Uploaded}, downloaded={Downloaded}, left={Left}, event={Event}", 
+            //    announceRequest.InfoHash, announceRequest.PeerId, announceRequest.Port, announceRequest.Uploaded, announceRequest.Downloaded, announceRequest.Left, announceRequest.Event);
 
-            var torrent = _torrents.GetOrAdd(infoHash, new Torrent(infoHash));
-
-            if (eventStr == "stopped")
-            {
-                torrent.RemovePeer(peerId);
-                _logger.LogInformation("Peer {PeerId} stopped.", peerId);
-            }
-            else
-            {
-                torrent.UpdatePeer(peer);
-                _logger.LogInformation("Peer {PeerId} updated.", peerId);
-            }
-
-            var peers = torrent.GetPeers(50); // Get up to 50 peers
-            _logger.LogDebug("Found {PeerCount} peers for torrent {InfoHash}", peers.Count, infoHash);
-
-            var responseDict = new BEncodedDictionary
-            {
-                { "interval", new BEncodedNumber(1800) }, // 30 minutes
-                { "peers", new BEncodedList(peers.Select(p => new BEncodedDictionary
-                {
-                    { "peer id", new BEncodedString(p.PeerId) },
-                    { "ip", new BEncodedString(p.EndPoint.Address.ToString()) },
-                    { "port", new BEncodedNumber(p.EndPoint.Port) }
-                })) }
-            };
-
-            var responseBytes = responseDict.Encode();
-            response.ContentType = "text/plain";
-            response.ContentLength64 = responseBytes.Length;
-            response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
-            response.Close();
+            _logger.LogInformation("Raw request: " + request.RawUrl);
+            
+            ProcessAnnounceRequest(announceRequest, response);
         }
         catch (Exception e)
         {
@@ -123,8 +108,72 @@ public class TrackerServer
             Error(response, "Internal server error.");
         }
     }
+
+    private void ProcessAnnounceRequest(AnnounceRequest announceRequest, HttpListenerResponse response)
+    {
+        var requestingPeer = new Peer(announceRequest.PeerId, new IPEndPoint(announceRequest.RemoteEndPoint.Address, announceRequest.Port), 
+            announceRequest.Uploaded, announceRequest.Downloaded, announceRequest.Left);
+
+        var torrent = _torrents.GetOrAdd(announceRequest.InfoHash, new Torrent(announceRequest.InfoHash));
+
+        if (announceRequest.Event == "stopped")
+        {
+            torrent.RemovePeer(announceRequest.PeerId);
+            _logger.LogInformation("Peer {PeerId} stopped.", announceRequest.PeerId);
+        }
+        else
+        {
+            torrent.UpdatePeer(requestingPeer);
+            _logger.LogInformation("Peer {PeerId} updated.", announceRequest.PeerId);
+        }
+
+        var peers = torrent.GetPeers(50); // Get up to 50 peers
+        peers.RemoveAll(p => p.PeerId == announceRequest.PeerId); // Don't return the requesting peer
+        _logger.LogInformation("Found {PeerCount} peers for torrent {InfoHash}", peers.Count, announceRequest.InfoHash);
+
+        var responseDict = new BEncodedDictionary
+        {
+            { "interval", new BEncodedNumber(900) },
+            { "complete", new BEncodedNumber(peers.Count(p => p.Left == 0)) },
+            { "incomplete", new BEncodedNumber(peers.Count(p => p.Left > 0)) },
+            { "peers", BuildPeerList(peers, announceRequest.IsCompactRequested)}
+        };
+
+        var responseBytes = responseDict.Encode();
+        response.ContentType = "text/plain";
+        response.ContentLength64 = responseBytes.Length;
+        response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
+        response.Close();
+    }
+
+    private static BEncodedValue BuildPeerList(List<Peer> peers, bool isCompactRequested)
+    {
+        if (isCompactRequested)
+        {
+            var compactPeers = new byte[peers.Count * 6];
+            for (var i = 0; i < peers.Count; i++)
+            {
+                var addrBytes = peers[i].EndPoint.Address.GetAddressBytes(); // must be 4 bytes for IPv4
+                var pport = (ushort) peers[i].EndPoint.Port;
+
+                Buffer.BlockCopy(addrBytes, 0, compactPeers, i * 6, 4);
+                compactPeers[i * 6 + 4] = (byte)(pport >> 8);   // network byte order
+                compactPeers[i * 6 + 5] = (byte)(pport & 0xff);
+            }
+            return new BEncodedString(compactPeers);
+        }
+        
+        //Todo: Maybe do not send peer id if "no_peer_id" is set in the request
+        //Normal peer list
+        return new BEncodedList(peers.Select(p => new BEncodedDictionary
+        {
+            { "id", new BEncodedString(p.PeerId) },
+            { "ip", new BEncodedString(p.EndPoint.Address.ToString()) },
+            { "port", new BEncodedNumber(p.EndPoint.Port) }
+        }));
+    }
     
-    private void Error(HttpListenerResponse response, string message)
+    private static void Error(HttpListenerResponse response, string message)
     {
         var errorDict = new BEncodedDictionary
         {

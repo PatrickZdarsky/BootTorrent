@@ -8,14 +8,21 @@ using btserver.torrent.monotorrent;
 using btserver.transport;
 using Serilog;
 
-Log.Logger = new LoggerConfiguration()
- .WriteTo.Console()
- .WriteTo.File("logs/log.txt", rollingInterval: RollingInterval.Day)
- .Enrich.FromLogContext()
- .CreateLogger();
-
 var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddSerilog(); 
+builder.Services.AddSerilog(config => config
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext:l}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File("logs/log.txt", rollingInterval: RollingInterval.Day));
+
+//builder.Services.AddSerilog(); 
+
+// Log.Logger = new LoggerConfiguration()
+//  .ReadFrom.Configuration(builder.Configuration)
+//  .Enrich.FromLogContext()
+//  .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext:l}] {Message:lj}{NewLine}{Exception}")
+//  .WriteTo.File("logs/log.txt", rollingInterval: RollingInterval.Day)
+//  .CreateLogger();
 
 //Config
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));

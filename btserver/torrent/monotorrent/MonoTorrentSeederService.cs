@@ -8,7 +8,7 @@ using MonoTorrent;
 using MonoTorrent.Client;
 using Microsoft.Extensions.Logging;
 
-public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, IDisposable
+public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, TorrentManager> _managers = new();
     private readonly SemaphoreSlim _sync = new(1, 1);
@@ -118,26 +118,39 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
     {
         if (_engine is null)
             return;
-
-        _logger.LogInformation("Stopping MonoTorrent seeding engine");
-
-        foreach (var manager in _managers.Values)
+    
+        // Create a list of all the StopAsync tasks
+        var stopTasks = _managers.Values.Select(manager =>
         {
             try
             {
-                await manager.StopAsync();
+                // Return the task so it can be awaited by Task.WhenAll
+                return manager.StopAsync(TimeSpan.FromSeconds(1));
             }
             catch (Exception e)
             {
                 _logger.LogWarning(e, "Failed to stop torrent manager for '{InfoHash}'", manager.InfoHashes);
+                // Return a completed task if an exception occurs synchronously
+                return Task.CompletedTask;
             }
+        }).ToList();
+    
+        try
+        {
+            // Await all the stop tasks to complete in parallel
+            await Task.WhenAll(stopTasks);
         }
-
+        catch (Exception e)
+        {
+            // This will catch any exceptions from the awaited tasks
+            _logger.LogWarning(e, "An error occurred while stopping torrent managers in parallel.");
+        }
+    
         _managers.Clear();
-
+    
         _engine.Dispose();
         _engine = null;
-
+    
         _logger.LogInformation("MonoTorrent seeding engine stopped");
     }
 
@@ -165,14 +178,23 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
                 _logger.LogDebug("Artifact '{ArtifactId}' is already seeding (checked after lock)", artifactId);
                 return;
             }
-
-            _logger.LogInformation("Ensuring artifact '{ArtifactId}' is seeding", artifactId);
-
+            
             var torrentPath = await _artifactRegistry.GetTorrentFilePathAsync(artifactId);
             var dataPath = await _artifactRegistry.GetArtifactContentPathAsync(artifactId);
-
+            //Strip file from path
+            dataPath = Path.GetDirectoryName(dataPath) ?? throw new InvalidOperationException($"Failed to get directory name from artifact content path '{dataPath}'");
+            
             var torrent = await Torrent.LoadAsync(torrentPath);
-            var manager = await _engine.AddAsync(torrent, dataPath);
+
+            _logger.LogInformation("Ensuring artifact '{ArtifactId}'({InfoHash}) is seeding", artifactId, torrent.InfoHashes.V1OrV2.ToHex());
+
+            
+            var manager = await _engine.AddAsync(torrent, dataPath, new TorrentSettingsBuilder
+            {
+                AllowDht = false,
+                AllowInitialSeeding = true,
+                AllowPeerExchange = true
+            }.ToSettings());
 
             await manager.StartAsync();
             _logger.LogInformation("Started seeding artifact '{ArtifactId}' with info hash '{InfoHash}'",
@@ -184,33 +206,6 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
         {
             _sync.Release();
         }
-    }
-
-    public void Dispose()
-    {
-        if (_disposed)
-            return;
-
-        _disposed = true;
-
-        _sync.Dispose();
-
-        foreach (var manager in _managers.Values)
-        {
-            try
-            {
-                manager.StopAsync().RunSynchronously();
-            }
-            catch (Exception e)
-            {
-                _logger.LogWarning(e, "Failed to stop torrent manager on dispose for '{InfoHash}'", manager.InfoHashes);
-            }
-        }
-
-        _managers.Clear();
-
-        _engine?.Dispose();
-        _engine = null;
     }
 
     private void ThrowIfDisposed()
@@ -238,5 +233,15 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
     {
         //Todo: Make me configureable
         return new IPEndPoint(IPAddress.Any, 55123);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        await StopAsync(CancellationToken.None);
     }
 }

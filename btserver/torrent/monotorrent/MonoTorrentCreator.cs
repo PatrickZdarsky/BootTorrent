@@ -95,6 +95,7 @@ public class MonoTorrentCreator : ITorrentCreator
         creator.Announces.Add([_settings.TrackerUrl]);
         creator.CreatedBy = "BootTorrent Server";
         creator.Name = name;
+        creator.Private = true;
         creator.Comment = $"{id}\n{description}";
         creator.PieceLength = _settings.PieceLength;
         
