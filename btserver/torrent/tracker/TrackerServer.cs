@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net;
-using btserver.torrent.impl;
 using MonoTorrent.BEncoding;
 
 namespace btserver.torrent.tracker;
@@ -43,7 +42,7 @@ public class TrackerServer
             while (_listener.IsListening && !cancellationToken.IsCancellationRequested)
             {
                 var context = await _listener.GetContextAsync();
-                ProcessRequest(context);
+                _ = Task.Run(() => ProcessRequest(context), cancellationToken);
             }
         }
         catch (HttpListenerException ex)
@@ -98,7 +97,7 @@ public class TrackerServer
             //_logger.LogInformation("Request parameters: info_hash={InfoHash}, peer_id={PeerId}, port={Port}, uploaded={Uploaded}, downloaded={Downloaded}, left={Left}, event={Event}", 
             //    announceRequest.InfoHash, announceRequest.PeerId, announceRequest.Port, announceRequest.Uploaded, announceRequest.Downloaded, announceRequest.Left, announceRequest.Event);
 
-            _logger.LogInformation("Raw request: " + request.RawUrl);
+            _logger.LogInformation("Raw request: {RawUrl}", request.RawUrl);
             
             ProcessAnnounceRequest(announceRequest, response);
         }
