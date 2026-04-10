@@ -2,6 +2,7 @@ using boottorrent_lib.torrent;
 using btserver.torrent;
 using btserver.torrent.impl;
 using btserver.torrent.monotorrent;
+using btserver.torrent.tracker;
 
 namespace btserver;
 

@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace btserver.torrent.impl;
+namespace btserver.torrent.tracker;
 
 public class Peer
 {

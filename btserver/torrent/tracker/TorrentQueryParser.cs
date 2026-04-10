@@ -1,7 +1,4 @@
-namespace btserver.torrent.impl;
-
-using System;
-using System.Collections.Generic;
+namespace btserver.torrent.tracker;
 
 public static class TorrentQueryParser
 {

@@ -5,6 +5,7 @@ using btserver.settings;
 using btserver.torrent;
 using btserver.torrent.impl;
 using btserver.torrent.monotorrent;
+using btserver.torrent.tracker;
 using btserver.transport;
 using Serilog;
 

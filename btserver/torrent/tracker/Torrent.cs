@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 
-namespace btserver.torrent.impl;
+namespace btserver.torrent.tracker;
 
 public class Torrent
 {
