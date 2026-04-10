@@ -27,7 +27,7 @@ public class AnnounceRequest
         IsCompactRequested = isCompactRequested;
         RemoteEndPoint = remoteEndPoint;
     }
-
+    
     public static bool TryParse(HttpListenerRequest request, out AnnounceRequest? announceRequest)
     {
         announceRequest = null;

@@ -97,7 +97,7 @@ public class TrackerServer
             //_logger.LogInformation("Request parameters: info_hash={InfoHash}, peer_id={PeerId}, port={Port}, uploaded={Uploaded}, downloaded={Downloaded}, left={Left}, event={Event}", 
             //    announceRequest.InfoHash, announceRequest.PeerId, announceRequest.Port, announceRequest.Uploaded, announceRequest.Downloaded, announceRequest.Left, announceRequest.Event);
 
-            _logger.LogInformation("Raw request: {RawUrl}", request.RawUrl);
+            //_logger.LogInformation("Raw request: {RawUrl}", request.RawUrl);
             
             ProcessAnnounceRequest(announceRequest, response);
         }
@@ -119,24 +119,30 @@ public class TrackerServer
         {
             torrent.RemovePeer(announceRequest.PeerId);
             _logger.LogInformation("Peer {PeerId} stopped.", announceRequest.PeerId);
+            response.Close();
+            return;
         }
-        else
-        {
-            torrent.UpdatePeer(requestingPeer);
-            _logger.LogInformation("Peer {PeerId} updated.", announceRequest.PeerId);
-        }
-
-        var peers = torrent.GetPeers(50); // Get up to 50 peers
-        peers.RemoveAll(p => p.PeerId == announceRequest.PeerId); // Don't return the requesting peer
-        _logger.LogInformation("Found {PeerCount} peers for torrent {InfoHash}", peers.Count, announceRequest.InfoHash);
-
+        torrent.UpdatePeer(requestingPeer);
+        
         var responseDict = new BEncodedDictionary
         {
             { "interval", new BEncodedNumber(900) },
-            { "complete", new BEncodedNumber(peers.Count(p => p.Left == 0)) },
-            { "incomplete", new BEncodedNumber(peers.Count(p => p.Left > 0)) },
-            { "peers", BuildPeerList(peers, announceRequest.IsCompactRequested)}
+            { "complete", new BEncodedNumber(torrent.CompletedPeers) },
+            { "incomplete", new BEncodedNumber(torrent.IncompletePeers) }
         };
+
+        if (requestingPeer.Left == 0)
+        {
+            _logger.LogInformation("[{Peer}] is seeding", announceRequest.PeerId);
+        }
+        else
+        {
+            var peers = torrent.GetPeers(50); // Get up to 50 peers
+            peers.RemoveAll(p => p.PeerId == announceRequest.PeerId); // Don't return the requesting peer
+            
+            _logger.LogInformation("[{Peer}] Found {PeerCount} peers for torrent {InfoHash}", requestingPeer.PeerId, peers.Count, announceRequest.InfoHash);
+            responseDict["peers"] = BuildPeerList(peers, announceRequest.IsCompactRequested);
+        }
 
         var responseBytes = responseDict.Encode();
         response.ContentType = "text/plain";

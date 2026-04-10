@@ -41,5 +41,8 @@ public class Torrent
         }
         return peerList.Take(count).ToList();
     }
+    
+    public int CompletedPeers => Peers.Values.Count(p => p.Left == 0);
+    public int IncompletePeers => Peers.Values.Count(p => p.Left > 0);
 }
 
