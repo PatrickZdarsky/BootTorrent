@@ -14,17 +14,17 @@ public class MonoTorrentClient(ILogger<MonoTorrentClient> logger) : ITorrentClie
         var torrent = await Torrent.LoadAsync(torrentFilePath);
         var manager = await engine.AddAsync(torrent, downloadPath, 
             new TorrentSettingsBuilder{AllowDht = false}.ToSettings());
-        manager.PeersFound += (sender, args) =>
+        manager.PeersFound += (_, args) =>
         {
             logger.LogInformation("Found {PeerCount} peers for torrent {TorrentName} with info hash {InfoHash}",
                 args.NewPeers, manager.Torrent.Name, manager.Torrent.InfoHashes.V1OrV2);
         };
-        manager.PeerConnected += (sender, args) =>
+        manager.PeerConnected += (_, args) =>
         {
             logger.LogInformation("Connected to peer {PeerEndpoint} for torrent {TorrentName} with info hash {InfoHash}",
                 args.Peer.Uri, manager.Torrent.Name, manager.Torrent.InfoHashes.V1OrV2);
         };
-        manager.TorrentStateChanged += (sender, args) =>
+        manager.TorrentStateChanged += (_, args) =>
         {
             logger.LogInformation("Torrent {TorrentName} with info hash {InfoHash} changed state from {OldState} to {NewState}",
                 manager.Torrent.Name, manager.Torrent.InfoHashes.V1OrV2, args.OldState, args.NewState);
@@ -80,5 +80,10 @@ public class MonoTorrentClient(ILogger<MonoTorrentClient> logger) : ITorrentClie
             engine = null;
             logger.LogInformation("MonoTorrent engine stopped");
         }
+    }
+
+    public List<ITorrentStatus> GetActiveTorrents()
+    {
+        return engine?.Torrents.Select(ITorrentStatus (m) => new MonoTorrentStatus(m)).ToList() ?? new List<ITorrentStatus>();
     }
 }

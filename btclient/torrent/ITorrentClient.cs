@@ -6,4 +6,5 @@ public interface ITorrentClient
     Task RemoveTorrentAsync(string infoHash);
     Task StartAsync();
     Task StopAsync();
+    List<ITorrentStatus> GetActiveTorrents();
 }
