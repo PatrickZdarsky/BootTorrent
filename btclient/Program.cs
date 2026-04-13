@@ -1,6 +1,9 @@
 using boottorrent_lib.communication;
 using boottorrent_lib.communication.codec;
 using btclient;
+using btclient.handler;
+using btclient.torrent;
+using btclient.torrent.monotorrent;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -18,7 +21,10 @@ builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"
 builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<ClientMqttService>();
+builder.Services.AddSingleton<TorrentAssignmentHandler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ClientMqttService>());
+
+builder.Services.AddSingleton<ITorrentClient, MonoTorrentClient>();
 
 builder.Services.AddHostedService<ClientStatusWorker>();
 

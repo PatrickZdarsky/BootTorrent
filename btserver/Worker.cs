@@ -18,7 +18,6 @@ public class Worker(ILogger<Worker> logger, MonoTorrentSeederService seeder, Tra
         var artifact = (await registry.GetRegisteredArtifacts()).Values.FirstOrDefault();
         if (artifact is not null)
         {
-            logger.LogInformation("Seeding existing artifact with ID '{ArtifactId}' and name '{Name}'", artifact.ID, artifact.Name);
             tracker.RegisterSeeder(seeder);
         }
         

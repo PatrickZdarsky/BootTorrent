@@ -128,7 +128,7 @@ public class TrackerServer
         {
             { "interval", new BEncodedNumber(900) },
             { "complete", new BEncodedNumber(torrent.CompletedPeers) },
-            { "incomplete", new BEncodedNumber(torrent.IncompletePeers) }
+            { "incomplete", new BEncodedNumber(torrent.IncompletePeers - (requestingPeer.Left > 0 ? 1 : 0)) }
         };
 
         if (requestingPeer.Left == 0)
@@ -140,8 +140,9 @@ public class TrackerServer
             var peers = torrent.GetPeers(50); // Get up to 50 peers
             peers.RemoveAll(p => p.PeerId == announceRequest.PeerId); // Don't return the requesting peer
             
-            _logger.LogInformation("[{Peer}] Found {PeerCount} peers for torrent {InfoHash}", requestingPeer.PeerId, peers.Count, announceRequest.InfoHash);
+            _logger.LogInformation("[{Peer}] Found {PeerCount} peers for torrent {InfoHash} and peer port {Port}", requestingPeer.PeerId, peers.Count, announceRequest.InfoHash, requestingPeer.EndPoint.Port);
             responseDict["peers"] = BuildPeerList(peers, announceRequest.IsCompactRequested);
+            
         }
 
         var responseBytes = responseDict.Encode();

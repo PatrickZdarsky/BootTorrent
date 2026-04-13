@@ -23,10 +23,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="handler\" />
-    </ItemGroup>
-
-    <ItemGroup>
       <ProjectReference Include="..\boottorrent-lib\boottorrent-lib.csproj" />
     </ItemGroup>
 </Project>

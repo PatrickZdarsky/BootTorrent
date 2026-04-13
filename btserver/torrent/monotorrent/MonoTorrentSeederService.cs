@@ -1,4 +1,5 @@
 ﻿using MonoTorrent.BEncoding;
+using MonoTorrent.Connections;
 
 namespace btserver.torrent.monotorrent;
 
@@ -98,12 +99,13 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
             AllowPortForwarding = false,
             AutoSaveLoadDhtCache = false,
             AutoSaveLoadFastResume = false,
-            AutoSaveLoadMagnetLinkMetadata = false
+            AutoSaveLoadMagnetLinkMetadata = false,
+            AllowedEncryption = [EncryptionType.RC4Full, EncryptionType.RC4Header],
         }.ToSettings();
     
         _engine = new ClientEngine(settings);
-        var customPeerId = new BEncodedString("boottorrent-server-seeder"); // Must be 20 bytes
-    
+        var customPeerId = new BEncodedString("bt-server-seeder-"); // Must be 20 bytes
+        
         // Use reflection to set the read-only property's backing field
         var field = typeof(ClientEngine).GetField("<PeerId>k__BackingField", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         if (field != null)
@@ -193,14 +195,40 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
             {
                 AllowDht = false,
                 AllowInitialSeeding = true,
-                AllowPeerExchange = true
+                AllowPeerExchange = true,
+                UploadSlots = 0, //Allow unlimited upload slots
             }.ToSettings());
-
+            
+            manager.PeerConnected += (sender, args) =>
+            {
+                _logger.LogInformation("Peer connected to artifact '{ArtifactId}' with info hash '{InfoHash}'. Peer: {PeerUri}",
+                    artifactId, manager.InfoHashes.V1OrV2.ToHex(), args.Peer.Uri);
+            };
+            manager.TorrentStateChanged += (sender, args) =>
+            {
+                _logger.LogInformation("Torrent state changed for artifact '{ArtifactId}' with info hash '{InfoHash}'. Old state: {OldState}, New state: {NewState}",
+                    artifactId, manager.InfoHashes.V1OrV2.ToHex(), args.OldState, args.NewState);
+                
+            };
+                        _logger.LogInformation("Seeding properties for artifact '{ArtifactId}': IsInitialSeeding={IsInitialSeeding}, V1={V1}, V2={V2}",
+                            artifactId,
+                            manager.IsInitialSeeding,
+                            manager.InfoHashes.V1?.ToHex(),
+                            manager.InfoHashes.V2?.ToHex());
+                        
+                        manager.ConnectionAttemptFailed  += (sender, args) =>
+                        {
+                            _logger.LogWarning("Connection attempt failed for artifact '{ArtifactId}' with info hash '{InfoHash}'. Peer: {PeerUri} Error: {Error}",
+                                artifactId, manager.InfoHashes.V1OrV2.ToHex(), args.Peer.PeerId, args.Reason);
+                        };
             await manager.StartAsync();
             _logger.LogInformation("Started seeding artifact '{ArtifactId}' with info hash '{InfoHash}'",
-                artifactId, manager.InfoHashes);
+                artifactId, manager.InfoHashes.V1OrV2.ToHex());
 
             _managers[artifactId] = manager;
+            
+            
+            _logger.LogInformation("Torrent status for artifact '{ArtifactId}': {Status}", artifactId, manager.State);
         }
         finally
         {
