@@ -69,7 +69,7 @@ public class TorrentArtifactRegistry(
             }
         }
         
-        await CreateAndRegisterTorrentAsync("Test Artifact", "This is a test artifact created at startup.", "/home/patrick/boottorrent/VID_20250511_140554.mp4", cancellationToken);
+        await CreateAndRegisterTorrentAsync("TestArtifact", "This is a test artifact created at startup.", "/home/patrick/boottorrent/2025-04-26 00-29-58.mkv", cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

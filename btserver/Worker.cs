@@ -16,6 +16,9 @@ public class Worker(ILogger<Worker> logger, MonoTorrentSeederService seeder, Tra
         trackerServer.Start(stoppingToken);
         
         var artifact = (await registry.GetRegisteredArtifacts()).Values.FirstOrDefault();
+
+        
+        
         if (artifact is not null)
         {
             tracker.RegisterSeeder(seeder);

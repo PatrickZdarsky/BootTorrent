@@ -1,6 +1,7 @@
 using boottorrent_lib.communication;
 using boottorrent_lib.communication.message;
 using btclient.torrent;
+using btclient.torrent.monotorrent;
 
 namespace btclient;
 
@@ -28,13 +29,16 @@ public class ClientStatusWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await _torrentClient.StartAsync();
-        _torrentClient.AddTorrentAsync("/home/patrick/boottorrent/artifacts/fee52392-13e1-454b-908c-d84622ae4de7/Test Artifact.torrent");
+        //_torrentClient.AddTorrentAsync("/home/patrick/boottorrent/artifacts/575fbabf-d63a-460c-b3d5-24f53c2cd4cd/TestArtifact.torrent");
         
         while (!stoppingToken.IsCancellationRequested)
         {
-            if (_logger.IsEnabled(LogLevel.Information))
+            var manager = ((MonoTorrentClient)_torrentClient).engine.Torrents.FirstOrDefault();
+            if (manager is not null)
             {
-                _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
+                //Log percentage downloaded and stats
+                _logger.LogInformation("Torrent {TorrentName} with status {Status} is {Progress}% downloaded. Download speed: {DownloadSpeed} MB/s, Upload speed: {UploadSpeed} MB/s",
+                    manager.Torrent.Name, manager.State, manager.Progress, manager.Monitor.DownloadSpeed / 1024 / 1024, manager.Monitor.UploadSpeed / 1024 / 1024);
             }
 
             await Task.Delay(1000, stoppingToken);
