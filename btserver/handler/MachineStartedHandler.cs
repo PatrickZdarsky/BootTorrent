@@ -13,14 +13,15 @@ public class MachineStartedHandler(ILogger<MachineStartedHandler> logger, ITorre
     {
         logger.LogInformation("Machine started: {ClientIdentifier} IP: {IPAddress}", context.TargetId, message.IPAddress);
 
+        var job = new TorrentJob
+        {
+            Artifact = (await registry.GetRegisteredArtifacts()).Values.First(),
+            DestinationSelector = null,
+            SavePath = null
+        };
         await mqttService.Value.PublishAsync(new TorrentAssignmentMessage()
         {
-            TorrentJob = new TorrentJob
-            {
-                Artifact = (await registry.GetRegisteredArtifacts()).Values.First(),
-                DestinationSelector = null,
-                SavePath = null
-            }
+            TorrentJob = job
         }, MqttTopicContext.CreateCommandForMachine(context.TargetId, TorrentAssignmentMessage.MessageType));
     }
 }

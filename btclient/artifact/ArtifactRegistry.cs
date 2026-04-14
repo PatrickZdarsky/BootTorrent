@@ -43,7 +43,7 @@ public class ArtifactRegistry
         
         //Save torrent file to directory
         var torrentFilePath = GetTorrentFilePath(torrentJob.Artifact.Name);
-        File.WriteAllBytes(torrentFilePath, torrentJob.Artifact.torrent.TorrentFileBytes);
+        File.WriteAllBytes(torrentFilePath, torrentJob.Artifact.Torrent.TorrentFileBytes);
         
         await _torrentClient.AddTorrentAsync(torrentFilePath, artifactDirectoryPath);
     }

@@ -71,7 +71,7 @@ public class MonoTorrentCreator : ITorrentCreator
     {
         var fileHash = await ComputeSHA256Hash(filePath);
         //Check if we already have this artifact based on the hash
-        var existingArtifact = LoadedArtifacts.FirstOrDefault(a => a.integritySpec.FileSha256 == fileHash);
+        var existingArtifact = LoadedArtifacts.FirstOrDefault(a => a.IntegritySpec.FileSha256 == fileHash);
         if (existingArtifact != null)
         {
             //Todo: Log that we are reusing existing artifact and the name wasn't updated
@@ -113,13 +113,13 @@ public class MonoTorrentCreator : ITorrentCreator
         {
             ID = id,
             Name = name,
-            torrent = new TorrentDescriptor()
+            Torrent = new TorrentDescriptor()
             {
                 InfoHashV1 = torrent.InfoHashes.V1!.ToHex(),
                 InfoHashV2 = torrent.InfoHashes.V2!.ToHex(),
                 TorrentFileBytes = torrentFileBytes
             },
-            integritySpec = new IntegritySpec()
+            IntegritySpec = new IntegritySpec()
             {
                 FileSha256 = fileHash
             }
