@@ -3,8 +3,8 @@ services:
     image: eclipse-mosquitto:2
     container_name: mosquitto
     ports:
-      - "1883:1883"
-      - "9001:9001"
+      - "1883:1883" # mqtt listener
+      - "9001:9001" # ws listener
     volumes:
       - ./mosquitto-config:/mosquitto/config:rw
 #      - ./mosquitto/data:/mosquitto/data:rw

@@ -30,7 +30,7 @@ public class ClientMqttService : MqttMessageService
     {
         MqttClient.ApplicationMessageReceivedAsync += HandleMessageReceivedAsync;
         await MqttClient.SubscribeAsync("boottorrent/cmd/global/#", MqttQualityOfServiceLevel.AtLeastOnce);
-        await MqttClient.SubscribeAsync($"boottorrent/cmd/client/{ClientSettings.ClientIdentifier}/#", MqttQualityOfServiceLevel.AtLeastOnce);
+        await MqttClient.SubscribeAsync($"boottorrent/cmd/machine/{ClientSettings.ClientIdentifier}/#", MqttQualityOfServiceLevel.AtLeastOnce);
         // await MqttClient.SubscribeAsync($"boottorrent/cmd/zone/{ZONE}", MqttQualityOfServiceLevel.AtLeastOnce);
         
         // Fire the event after the connection is fully set up

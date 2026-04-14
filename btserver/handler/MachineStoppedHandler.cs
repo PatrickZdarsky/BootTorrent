@@ -1,7 +1,7 @@
 ﻿using boottorrent_lib.communication;
 using boottorrent_lib.communication.message;
 
-namespace btserver.transport;
+namespace btserver.handler;
 
 public class MachineStoppedHandler(ILogger<MachineStartedHandler> logger) : IMessageHandler<MachineStoppedMessage>
 {

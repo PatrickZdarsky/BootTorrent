@@ -41,6 +41,17 @@ public class MqttTopicContext
         };
     }
     
+    public static MqttTopicContext CreateCommandForMachine(string machineId, string messageType)
+    {
+        return new MqttTopicContext
+        {
+            Direction = MqttDirection.Command,
+            Scope = MqttScope.Machine,
+            TargetId = machineId,
+            MessageType = messageType
+        };
+    }
+    
     public static MqttTopicContext Parse(string topic)
     {
         var parts = topic.Split('/');

@@ -1,12 +1,12 @@
 using boottorrent_lib.communication;
 using boottorrent_lib.communication.codec;
 using btserver;
+using btserver.handler;
 using btserver.settings;
 using btserver.torrent;
 using btserver.torrent.impl;
 using btserver.torrent.monotorrent;
 using btserver.torrent.tracker;
-using btserver.transport;
 using Serilog;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -29,6 +29,8 @@ builder.Services.AddSerilog(config => config
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
 builder.Services.Configure<TorrentSettings>(builder.Configuration.GetSection("Torrent"));
 
+
+//Todo: Fix dependecy issues cause MQTT stuff needs other things but it gets loaded first
 //Setup MQTT
 builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
 // builder.Services.Scan(scan => scan
@@ -36,13 +38,13 @@ builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
 //     .AddClasses(classes => classes.AssignableTo(typeof(IMessageHandler<>)))
 //     .AsImplementedInterfaces()
 //     .WithSingletonLifetime());
+builder.Services.AddTransient<Lazy<ServerMqttService>>(provider => new Lazy<ServerMqttService>(provider.GetService<ServerMqttService>));
 builder.Services.AddSingleton<MachineStartedHandler>();
 builder.Services.AddSingleton<MachineStoppedHandler>();
 
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<ServerMqttService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerMqttService>());
-
 
 
 //Torrent / Artifact Management
@@ -59,6 +61,9 @@ builder.Services.AddSingleton<TrackerServer>();
 builder.Services.AddSingleton<MonoTorrentSeederService>();
 builder.Services.AddSingleton<ITorrentSeeder>(sp => sp.GetRequiredService<MonoTorrentSeederService>());
 builder.Services.AddSingleton<ITorrentSeederService>(sp => sp.GetRequiredService<MonoTorrentSeederService>());
+
+
+
 
 builder.Services.AddHostedService<Worker>();
 
