@@ -42,14 +42,14 @@ public class ArtifactRegistry
         }
         
         //Save torrent file to directory
-        var torrentFilePath = GetTorrentFilePath(torrentJob.Artifact.Name);
+        var torrentFilePath = GetTorrentFilePath(torrentJob.ArtifactId, torrentJob.Artifact.Name);
         File.WriteAllBytes(torrentFilePath, torrentJob.Artifact.Torrent.TorrentFileBytes);
         
         await _torrentClient.AddTorrentAsync(torrentFilePath, artifactDirectoryPath);
     }
 
-    private string GetTorrentFilePath(string artifactName)
+    private string GetTorrentFilePath(string artifactId, string artifactName)
     {
-        return Path.Combine(_settings.CurrentValue.ArtifactPath, $"{NameUtil.ToFilePathName(artifactName)}.torrent");
+        return Path.Combine(_settings.CurrentValue.ArtifactPath, artifactId, $"{NameUtil.ToFilePathName(artifactName)}.torrent");
     }
 }

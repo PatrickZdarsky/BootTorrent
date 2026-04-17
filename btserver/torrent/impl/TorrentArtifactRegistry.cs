@@ -44,6 +44,11 @@ public class TorrentArtifactRegistry(
     {
         return Task.FromResult(_artifacts[artifactId]);
     }
+    
+    public TorrentArtifact? GetArtifactByInfoHash(string announceRequestInfoHash)
+    {
+        return _artifacts.Values.FirstOrDefault(artifact => artifact.InfoHashV1 == announceRequestInfoHash || artifact.InfoHashV2 == announceRequestInfoHash);
+    }
 
     public Task<string> GetTorrentFilePathAsync(string artifactId)
     {

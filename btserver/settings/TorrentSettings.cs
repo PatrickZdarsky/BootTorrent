@@ -14,4 +14,8 @@ public class TorrentSettings
     public string TrackerBindAddress { get; set; }
     
     public int TrackerPort { get; set; }
+
+    public string AnnounceSuffix { get; set; } = "announce/";
+    
+    public string TorrentFileGetSuffix { get; set; } = "torrent/";
 }

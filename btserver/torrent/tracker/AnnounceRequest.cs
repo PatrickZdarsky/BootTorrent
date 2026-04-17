@@ -28,9 +28,8 @@ public class AnnounceRequest
         RemoteEndPoint = remoteEndPoint;
     }
     
-    public static bool TryParse(HttpListenerRequest request, out AnnounceRequest? announceRequest)
+    public static bool TryParse(HttpListenerRequest request, out AnnounceRequest announceRequest)
     {
-        announceRequest = null;
         var query = request.QueryString;
 
         var infoHashBytes = TorrentQueryParser.ExtractInfoHashFromRawUrl(request.RawUrl!);
@@ -46,6 +45,7 @@ public class AnnounceRequest
         if (string.IsNullOrEmpty(infoHash) || string.IsNullOrEmpty(peerId) || !int.TryParse(portStr, out var port) ||
             !long.TryParse(uploadedStr, out var uploaded) || !long.TryParse(downloadedStr, out var downloaded) || !long.TryParse(leftStr, out var left))
         {
+            announceRequest = null;
             return false;
         }
 

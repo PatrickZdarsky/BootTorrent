@@ -92,7 +92,7 @@ public class MonoTorrentCreator : ITorrentCreator
         File.Copy(filePath, artifactFilePath, true);
         //Generate torrent file
         var creator = new TorrentCreator();
-        creator.Announces.Add([_settings.TrackerUrl]);
+        creator.Announces.Add([_settings.TrackerUrl+_settings.AnnounceSuffix]);
         creator.CreatedBy = "BootTorrent Server";
         creator.Name = name;
         creator.Private = true;

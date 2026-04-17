@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net;
 using MonoTorrent.BEncoding;
+using btserver.settings;
+using Microsoft.Extensions.Options;
 
 namespace btserver.torrent.tracker;
 
@@ -12,6 +14,8 @@ public class TrackerServer
     private readonly ILogger<TrackerServer> _logger;
     private CancellationTokenSource? _cancellationTokenSource;
 
+    private readonly ITorrentArtifactRegistry _artifactRegistry;
+
     /*
      *  Todo:
      *  - Add a watchdog to time-out peers which haven't announced in a while (e.g. 30 minutes) to prevent stale peers from accumulating.
@@ -19,12 +23,14 @@ public class TrackerServer
      *  - Add ability to add more logic to which peers are returned (for the actual use-case of this project)
      */
     
-    public TrackerServer(ILogger<TrackerServer> logger, string listeningUri = "http://+:6969/announce/")
+    public TrackerServer(ILogger<TrackerServer> logger, IOptions<TorrentSettings> settings, ITorrentArtifactRegistry artifactRegistry)
     {
         _logger = logger;
-        _listeningUri = listeningUri;
+        _artifactRegistry = artifactRegistry;
+        _listeningUri = settings.Value.TrackerUrl;
         _listener = new HttpListener();
-        _listener.Prefixes.Add(_listeningUri);
+        _listener.Prefixes.Add(settings.Value.TrackerBindAddress + settings.Value.AnnounceSuffix);
+        _listener.Prefixes.Add(settings.Value.TrackerBindAddress + settings.Value.TorrentFileGetSuffix);
     }
 
     public void Start(CancellationToken cancellationToken = default)
@@ -87,17 +93,37 @@ public class TrackerServer
 
         try
         {
+            if (request.Url is null)
+            {
+                response.Close();
+                return;
+            }
+            
+            if (request.Url.LocalPath.StartsWith("/torrent"))
+            {
+                //Get torrent hash which is after the /torrent/ suffix
+                var torrentHashHex = request.Url.LocalPath.Substring(request.Url.LocalPath.LastIndexOf('/') + 1);
+                var artifact = _artifactRegistry.GetArtifactByInfoHash(torrentHashHex);
+                if (artifact == null)                {
+                    _logger.LogWarning("Torrent file not found for info hash {InfoHash} from {RemoteEndPoint}", torrentHashHex, request.RemoteEndPoint);
+                    Error(response, "Torrent file not found.");
+                    return;
+                }
+                
+                _logger.LogInformation("Processing torrent get request for info hash {InfoHash}", request.Url.LocalPath);
+                response.ContentType = "application/x-bittorrent";
+                response.ContentLength64 = artifact.Torrent.TorrentFileBytes.Length;
+                response.OutputStream.Write(artifact.Torrent.TorrentFileBytes, 0, artifact.Torrent.TorrentFileBytes.Length);
+                response.Close();
+                return;
+            }
+            
             if (!AnnounceRequest.TryParse(request, out var announceRequest))
             {
                 _logger.LogWarning("Missing or invalid required parameters from {RemoteEndPoint}", request.RemoteEndPoint);
                 Error(response, "Missing or invalid required parameters.");
                 return;
             }
-            
-            //_logger.LogInformation("Request parameters: info_hash={InfoHash}, peer_id={PeerId}, port={Port}, uploaded={Uploaded}, downloaded={Downloaded}, left={Left}, event={Event}", 
-            //    announceRequest.InfoHash, announceRequest.PeerId, announceRequest.Port, announceRequest.Uploaded, announceRequest.Downloaded, announceRequest.Left, announceRequest.Event);
-
-            //_logger.LogInformation("Raw request: {RawUrl}", request.RawUrl);
             
             ProcessAnnounceRequest(announceRequest, response);
         }
@@ -113,7 +139,12 @@ public class TrackerServer
         var requestingPeer = new Peer(announceRequest.PeerId, new IPEndPoint(announceRequest.RemoteEndPoint.Address, announceRequest.Port), 
             announceRequest.Uploaded, announceRequest.Downloaded, announceRequest.Left);
 
-        var torrent = _torrents.GetOrAdd(announceRequest.InfoHash, new Torrent(announceRequest.InfoHash));
+        var torrent = VerifyAndGetTorrent(announceRequest.InfoHash);
+        if (torrent is null)
+        {
+            Error(response, "Torrent not found.");
+            return;
+        }
 
         if (announceRequest.Event == "stopped")
         {
@@ -150,6 +181,22 @@ public class TrackerServer
         response.ContentLength64 = responseBytes.Length;
         response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
         response.Close();
+    }
+
+    private Torrent? VerifyAndGetTorrent(string announceRequestInfoHash)
+    {
+        if (_torrents.TryGetValue(announceRequestInfoHash, out var existingTorrent))
+            return existingTorrent;
+        
+        var artifact = _artifactRegistry.GetArtifactByInfoHash(announceRequestInfoHash);
+        if (artifact == null)
+            return null;
+        
+        var torrent = new Torrent(artifact.InfoHashV2);
+        _torrents[artifact.InfoHashV1] = torrent;
+        _torrents[artifact.InfoHashV2] = torrent;
+        
+        return torrent;
     }
 
     private static BEncodedValue BuildPeerList(List<Peer> peers, bool isCompactRequested)
