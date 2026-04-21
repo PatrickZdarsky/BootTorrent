@@ -2,8 +2,10 @@ namespace btclient.torrent;
 
 public interface ITorrentStatus
 {
-    public double PercentageComplete { get; }
-    public TorrentDownloadState State { get; }
+    event EventHandler<object> StateChanged;
+            
+    double PercentageComplete { get; }
+    TorrentDownloadState State { get; }
     
-    public enum TorrentDownloadState { DOWNLOADING, DOWNLOADED, WAITING }
+    enum TorrentDownloadState { DOWNLOADING, DOWNLOADED, WAITING }
 }

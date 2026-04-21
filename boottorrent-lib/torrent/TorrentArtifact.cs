@@ -1,11 +1,12 @@
-﻿namespace boottorrent_lib.torrent;
+﻿using boottorrent_lib.artifact;
 
-public class TorrentArtifact
+namespace boottorrent_lib.torrent;
+
+public class TorrentArtifact : Artifact
 {
     public string InfoHashV1 => Torrent.InfoHashV1;
     public string InfoHashV2 => Torrent.InfoHashV2;
-    public string Name { get; init; } = default!;
-    public string ID { get; init; } = default!;
+    
     
     
     public TorrentDescriptor Torrent { get; init; } = default!;

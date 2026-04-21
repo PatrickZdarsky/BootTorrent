@@ -2,9 +2,11 @@
 
 public class TorrentJob
 {
-    public String JobId => $"{ArtifactId}@{SavePath}";
-    public String ArtifactId => Artifact.ID;
-    public TorrentArtifact Artifact { get; init; } = default!;
-    public string SavePath { get; init; } = default!;
-    public DestinationSelector DestinationSelector { get; init; } = default!;
+    public string JobId => $"{ArtifactId}@{SavePath}";
+    public string ArtifactId { get; set; } = default!;
+    public string Name { get; set; } = default!;
+    public string TorrentFileUrl { get; set; } = default!;
+    
+    public string SavePath { get; init; } = null!;
+    public DestinationSelector DestinationSelector { get; init; } = null!;
 }
