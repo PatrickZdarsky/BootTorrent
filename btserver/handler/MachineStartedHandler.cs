@@ -24,9 +24,9 @@ public class MachineStartedHandler(ILogger<MachineStartedHandler> logger, ITorre
             DestinationSelector = null,
             SavePath = null
         };
-        await mqttService.Value.PublishAsync(new TorrentAssignmentMessage()
+        await mqttService.Value.PublishAsync(new ArtifactAssignmentMessage()
         {
             TorrentJob = job
-        }, MqttTopicContext.CreateCommandForMachine(context.TargetId, TorrentAssignmentMessage.MessageType));
+        }, MqttTopicContext.CreateCommandForMachine(context.TargetId, ArtifactAssignmentMessage.MessageType));
     }
 }

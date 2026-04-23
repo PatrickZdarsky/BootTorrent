@@ -5,9 +5,9 @@ using btclient.torrent;
 
 namespace btclient.handler;
 
-public class TorrentAssignmentHandler : IMessageHandler<TorrentAssignmentMessage>
+public class TorrentAssignmentHandler : IMessageHandler<ArtifactAssignmentMessage>
 {
-    public string MessageType => TorrentAssignmentMessage.MessageType;
+    public string MessageType => ArtifactAssignmentMessage.MessageType;
     
     private readonly ArtifactRegistry _artifactRegistry;
     private readonly ILogger<TorrentAssignmentHandler> _logger;
@@ -18,7 +18,7 @@ public class TorrentAssignmentHandler : IMessageHandler<TorrentAssignmentMessage
         _artifactRegistry = artifactRegistry;
     }
     
-    public async Task HandleAsync(MqttTopicContext context, TorrentAssignmentMessage message)
+    public async Task HandleAsync(MqttTopicContext context, ArtifactAssignmentMessage message)
     {
         _logger.LogInformation("Received torrent assignment for job {JobId}", message.TorrentJob.JobId);
         

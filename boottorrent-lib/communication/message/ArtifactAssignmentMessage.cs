@@ -3,9 +3,9 @@ using MessagePack;
 
 namespace boottorrent_lib.communication.message;
 
-public class TorrentAssignmentMessage : IMqttMessage
+public class ArtifactAssignmentMessage : IMqttMessage
 {
-    public static readonly string MessageType = "torrent_assignment";
+    public static readonly string MessageType = "artifact_assignment";
 
     [Key(0)]
     public TorrentJob TorrentJob { get; set; }
