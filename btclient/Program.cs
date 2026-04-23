@@ -20,6 +20,8 @@ builder.Services
     .BindConfiguration("Client")
     .ValidateOnStart();
 
+builder.Services.AddHttpClient();
+
 //MQTT Setup
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
 builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();

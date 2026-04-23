@@ -1,3 +1,4 @@
+using boottorrent_lib.torrent;
 using Microsoft.Extensions.Options;
 using MonoTorrent;
 using MonoTorrent.Client;
@@ -9,7 +10,7 @@ public class MonoTorrentClient(ILogger<MonoTorrentClient> logger) : ITorrentClie
 {
     public ClientEngine? engine;
 
-    public async Task<ITorrentStatus> AddTorrentAsync(string torrentFilePath, string downloadPath)
+    public async Task<ITorrentStatus> AddTorrentAsync(TorrentJob torrentJob, string torrentFilePath, string downloadPath)
     {
         var torrent = await Torrent.LoadAsync(torrentFilePath);
         var manager = await engine.AddAsync(torrent, downloadPath, 
@@ -17,23 +18,23 @@ public class MonoTorrentClient(ILogger<MonoTorrentClient> logger) : ITorrentClie
         manager.PeersFound += (_, args) =>
         {
             logger.LogInformation("Found {PeerCount} peers for torrent {TorrentName} with info hash {InfoHash}",
-                args.NewPeers, manager.Torrent.Name, manager.Torrent.InfoHashes.V1OrV2);
+                args.NewPeers, manager.Torrent.Name, manager.Torrent.InfoHashes.V1OrV2.ToHex());
         };
         manager.PeerConnected += (_, args) =>
         {
             logger.LogInformation("Connected to peer {PeerEndpoint} for torrent {TorrentName} with info hash {InfoHash}",
-                args.Peer.Uri, manager.Torrent.Name, manager.Torrent.InfoHashes.V1OrV2);
+                args.Peer.Uri, manager.Torrent.Name, manager.Torrent.InfoHashes.V1OrV2.ToHex());
         };
         manager.TorrentStateChanged += (_, args) =>
         {
             logger.LogInformation("Torrent {TorrentName} with info hash {InfoHash} changed state from {OldState} to {NewState}",
-                manager.Torrent.Name, manager.Torrent.InfoHashes.V1OrV2, args.OldState, args.NewState);
+                manager.Torrent.Name, manager.Torrent.InfoHashes.V1OrV2.ToHex(), args.OldState, args.NewState);
         };
         
         await manager.StartAsync();
-        logger.LogInformation("Started downloading torrent {TorrentName} with info hash {InfoHash}", torrent.Name, torrent.InfoHashes.V1OrV2);
+        logger.LogInformation("Started downloading torrent {TorrentName} with info hash {InfoHash}", torrent.Name, torrent.InfoHashes.V1OrV2.ToHex());
         
-        return new MonoTorrentStatus(manager);
+        return new MonoTorrentStatus(manager) { TorrentJob = torrentJob };
     }
 
     public async Task RemoveTorrentAsync(string infoHash)

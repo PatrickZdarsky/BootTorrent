@@ -1,15 +1,17 @@
+using boottorrent_lib.torrent;
 using MonoTorrent.Client;
 
 namespace btclient.torrent.monotorrent;
 
 public class MonoTorrentStatus(TorrentManager torrentManager) : ITorrentStatus
 {
-    public event EventHandler<object>? StateChanged
+    public event EventHandler? StateChanged
     {
-        add => torrentManager.TorrentStateChanged += value;
-        remove => torrentManager.TorrentStateChanged -= value;
+        add => torrentManager.TorrentStateChanged += (sender, args) => value?.Invoke(sender, args);
+        remove => torrentManager.TorrentStateChanged -= (sender, args) => value?.Invoke(sender, args);
     }
-    
+
+    public TorrentJob TorrentJob { get; init; }
     public double PercentageComplete => torrentManager.Progress;
     public ITorrentStatus.TorrentDownloadState State => torrentManager.State switch
     {

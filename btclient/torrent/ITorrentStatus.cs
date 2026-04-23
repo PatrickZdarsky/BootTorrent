@@ -1,9 +1,12 @@
+using boottorrent_lib.torrent;
+
 namespace btclient.torrent;
 
 public interface ITorrentStatus
 {
-    event EventHandler<object> StateChanged;
-            
+    event EventHandler? StateChanged;
+
+    TorrentJob TorrentJob { get; }
     double PercentageComplete { get; }
     TorrentDownloadState State { get; }
     

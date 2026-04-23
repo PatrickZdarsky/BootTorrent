@@ -1,5 +1,7 @@
+using boottorrent_lib.artifact;
 using boottorrent_lib.communication;
 using boottorrent_lib.communication.message;
+using btclient.artifact;
 using btclient.torrent;
 using btclient.torrent.monotorrent;
 
@@ -10,15 +12,17 @@ public class ClientStatusWorker : BackgroundService
     private readonly ILogger<ClientStatusWorker> _logger;
     
     private readonly ClientMqttService _mqttService;
+    private readonly ArtifactRegistry _artifactRegistry;
     private readonly ITorrentClient _torrentClient;
 
-    public ClientStatusWorker(ILogger<ClientStatusWorker> logger, ClientMqttService mqttService, ITorrentClient torrentClient)
+    public ClientStatusWorker(ILogger<ClientStatusWorker> logger, ClientMqttService mqttService, ArtifactRegistry artifactRegistry, ITorrentClient torrentClient)
     {
         _logger = logger;
         _mqttService = mqttService;
+        _artifactRegistry = artifactRegistry;
         _torrentClient = torrentClient;
-        
-        
+
+
         _mqttService.MqttConnectionEstablished += async (sender, args) =>
         {
             await _mqttService.PublishAsync(new MachineStartedMessage() { IPAddress = "TEST" },
@@ -29,17 +33,15 @@ public class ClientStatusWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await _torrentClient.StartAsync();
-        //_torrentClient.AddTorrentAsync("/home/patrick/boottorrent/artifacts/575fbabf-d63a-460c-b3d5-24f53c2cd4cd/TestArtifact.torrent");
         
         while (!stoppingToken.IsCancellationRequested)
         {
-            var manager = ((MonoTorrentClient)_torrentClient).engine.Torrents.FirstOrDefault();
-            if (manager is not null)
-            {
-                //Log percentage downloaded and stats
-                _logger.LogInformation("Torrent {TorrentName} with status {Status} is {Progress}% downloaded. Download speed: {DownloadSpeed} MB/s, Upload speed: {UploadSpeed} MB/s",
-                    manager.Torrent.Name, manager.State, manager.Progress, manager.Monitor.DownloadSpeed / 1024 / 1024, manager.Monitor.UploadSpeed / 1024 / 1024);
-            }
+            await _mqttService.PublishAsync(new MachineHeartbeatMessage()
+            { 
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                LoadedArtifacts = _artifactRegistry.Artifacts.Where(a => a.State == ClientHostedArtifact.ArtifactState.Ready).Select(a => a.ID).ToList(),
+                PendingArtifacts = _artifactRegistry.ActiveJobs.ToDictionary(a => a.TorrentJob.ArtifactId, a => a.PercentageComplete)
+            }, _mqttService.EventFromMachine(MachineHeartbeatMessage.MessageType));
 
             await Task.Delay(1000, stoppingToken);
         }
