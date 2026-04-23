@@ -16,7 +16,7 @@ public class MonoTorrentCreator : ITorrentCreator
     public MonoTorrentCreator(IOptions<TorrentSettings> settings, ILogger<MonoTorrentCreator> logger)
     {
         Logger = logger;
-        this._settings = settings.Value;
+        _settings = settings.Value;
     }
     
     public List<TorrentArtifact> LoadedArtifacts { get; } = [];
@@ -75,7 +75,7 @@ public class MonoTorrentCreator : ITorrentCreator
         if (existingArtifact != null)
         {
             //Todo: Log that we are reusing existing artifact and the name wasn't updated
-            Logger.LogInformation($"Reusing existing artifact {existingArtifact.Name} with ID {existingArtifact.ID} for file {name}");
+            Logger.LogInformation("Reusing existing artifact {ArtifactName} with ID {ArtifactId} for file {Name}", existingArtifact.Name, existingArtifact.ID, name);;
             return  existingArtifact;
         }
         
