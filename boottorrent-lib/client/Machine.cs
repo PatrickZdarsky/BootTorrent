@@ -6,5 +6,6 @@
 /// <param name="id"></param>
 public class Machine(string id, string ipAddress)
 {
-    
+    public string Id { get; } = id;
+    public string IpAddress { get; } = ipAddress;
 }

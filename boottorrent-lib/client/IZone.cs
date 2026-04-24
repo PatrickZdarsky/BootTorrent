@@ -5,4 +5,5 @@
 /// </summary>
 public interface IZone : IEnumerable<Machine>
 {
+    abstract bool Contains(Machine machine);
 }

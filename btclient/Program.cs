@@ -28,6 +28,7 @@ builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<ClientMqttService>();
 builder.Services.AddSingleton<ArtifactRegistry>();
+builder.Services.AddSingleton<ArtifactUnassignmentHandler>();
 builder.Services.AddSingleton<ArtifactAssignmentHandler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ClientMqttService>());
 

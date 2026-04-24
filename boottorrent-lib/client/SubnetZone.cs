@@ -1,16 +1,23 @@
-﻿using System.Collections;
+﻿using System.Net;
 
 namespace boottorrent_lib.client;
 
-public class SubnetZone(string subnet) : IZone
+/// <summary>
+/// 
+/// </summary>
+/// <param name="subnet">The subnet in CIDR notation (e.g. 192.168.0.0/24)</param>
+public class SubnetZone(ICollection<Machine> machines, string subnet) : CollectionZone(machines)
 {
-    public IEnumerator<Machine> GetEnumerator()
+    private readonly IPNetwork _ipNetwork = IPNetwork.Parse(subnet);
+    
+    public new IEnumerator<Machine> GetEnumerator()
     {
-        throw new NotImplementedException();
+        IEnumerable<Machine> ms = this;
+        return ms.Where(m => _ipNetwork.Contains(IPAddress.Parse(m.IpAddress))).GetEnumerator();
     }
 
-    IEnumerator IEnumerable.GetEnumerator()
+    public override bool Contains(Machine machine)
     {
-        return GetEnumerator();
+        return base.Contains(machine) && _ipNetwork.Contains(IPAddress.Parse(machine.IpAddress));
     }
 }

@@ -21,8 +21,9 @@ public class ClientStatusWorker : BackgroundService
         _mqttService = mqttService;
         _artifactRegistry = artifactRegistry;
         _torrentClient = torrentClient;
-
-
+        
+        _artifactRegistry.LoadExistingArtifacts();
+        
         _mqttService.MqttConnectionEstablished += async (sender, args) =>
         {
             await _mqttService.PublishAsync(new MachineStartedMessage() { IPAddress = "TEST" },
