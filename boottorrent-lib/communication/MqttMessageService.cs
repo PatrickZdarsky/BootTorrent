@@ -5,23 +5,18 @@ using MQTTnet.Protocol;
 
 namespace boottorrent_lib.communication;
 
-public abstract class MqttMessageService : MqttClientService
+public abstract class MqttMessageService(
+    MqttClientOptions options,
+    ILogger logger,
+    MessageDispatcher dispatcher) : MqttClientService(options, logger)
 {
-    private readonly ILogger _logger;
-    private readonly MessageDispatcher _dispatcher;
-
-    protected MqttMessageService(MqttClientOptions options, ILogger logger,
-        MessageDispatcher dispatcher) : base(options, logger)
-    {
-        _logger = logger;
-        _dispatcher = dispatcher;
-    }
+    private readonly ILogger _logger = logger;
 
     protected async Task HandleMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs eventArgs)
     {
         try
         {
-            await _dispatcher.DispatchAsync(eventArgs.ApplicationMessage.Topic,
+            await dispatcher.DispatchAsync(eventArgs.ApplicationMessage.Topic,
                 eventArgs.ApplicationMessage.PayloadSegment);
         } catch (Exception ex)
         {
@@ -31,7 +26,7 @@ public abstract class MqttMessageService : MqttClientService
 
     public async Task PublishAsync(IMqttMessage mqttMessage, MqttTopicContext context)
     {
-        var payload = _dispatcher.Codec.Encode(mqttMessage);
+        var payload = dispatcher.Codec.Encode(mqttMessage);
         var message = new MqttApplicationMessageBuilder()
             .WithTopic(context.ToTopic())
             .WithPayload(payload)
@@ -39,5 +34,11 @@ public abstract class MqttMessageService : MqttClientService
             .Build();
 
         await MqttClient.PublishAsync(message);
+    }
+
+    public void AddHandler<TMessage>(string messageTypeKey, Func<MqttTopicContext, TMessage, Task> handler)
+        where TMessage : IMqttMessage
+    {
+        dispatcher.AddHandler(messageTypeKey, handler);
     }
 }

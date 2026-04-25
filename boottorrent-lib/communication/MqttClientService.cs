@@ -8,7 +8,7 @@ namespace boottorrent_lib.communication;
 // Taken from https://github.com/rafiulgits/mqtt-client-dotnet-core
 public abstract class MqttClientService : BackgroundService
 {
-    public readonly IMqttClient MqttClient;
+    protected readonly IMqttClient MqttClient;
     private readonly MqttClientOptions _options;
     private readonly ILogger _logger;
 
@@ -21,19 +21,19 @@ public abstract class MqttClientService : BackgroundService
         MqttClient.DisconnectedAsync += HandleDisconnectedAsync;
     }
     
-    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 // This code will also do the very first connect! So no call to _ConnectAsync_ is required in the first place.
-                if (await MqttClient.TryPingAsync(cancellationToken)) continue;
+                if (await MqttClient.TryPingAsync(stoppingToken)) continue;
                         
                 await MqttClient.ConnectAsync(_options, CancellationToken.None);
 
                 // Subscribe to topics when session is clean etc.
-                _logger.LogInformation("The MQTT client is connected.");
+                _logger.LogInformation("The MQTT client has connected.");
             }
             catch (Exception ex)
             {
@@ -43,7 +43,7 @@ public abstract class MqttClientService : BackgroundService
             finally
             {
                 // Check the connection state every 5 seconds and perform a reconnect if required.
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
         }
     }
