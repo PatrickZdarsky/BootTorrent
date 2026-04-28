@@ -1,7 +1,7 @@
 ﻿using System.Security.Cryptography;
 using boottorrent_lib.torrent;
 using boottorrent_lib.util;
-using btserver.settings;
+using btserver.Config;
 using Microsoft.Extensions.Options;
 using MonoTorrent;
 using Newtonsoft.Json;
@@ -11,28 +11,28 @@ namespace btserver.torrent.monotorrent;
 public class MonoTorrentCreator : ITorrentCreator
 {
     private ILogger<MonoTorrentCreator> Logger { get; }
-    private readonly TorrentSettings _settings;
+    private readonly TorrentConfig _config;
     
-    public MonoTorrentCreator(IOptions<TorrentSettings> settings, ILogger<MonoTorrentCreator> logger)
+    public MonoTorrentCreator(IOptions<TorrentConfig> settings, ILogger<MonoTorrentCreator> logger)
     {
         Logger = logger;
-        _settings = settings.Value;
+        _config = settings.Value;
     }
     
     public List<TorrentArtifact> LoadedArtifacts { get; } = [];
     
     public async Task LoadExistingArtifactsAsync()
     {
-        if (!Directory.Exists(_settings.ArtifactStoragePath))
+        if (!Directory.Exists(_config.ArtifactStoragePath))
         {
-            Directory.CreateDirectory(_settings.ArtifactStoragePath);
+            Directory.CreateDirectory(_config.ArtifactStoragePath);
             return;
         }
 
         LoadedArtifacts.Clear();
 
         // New layout: each artifact has its own subdirectory containing payload, .torrent and .meta.json.
-        var artifactDirectories = Directory.GetDirectories(_settings.ArtifactStoragePath);
+        var artifactDirectories = Directory.GetDirectories(_config.ArtifactStoragePath);
         foreach (var artifactDirectory in artifactDirectories)
         {
             var metaFile = Directory.GetFiles(artifactDirectory, "*.meta.json").FirstOrDefault();
@@ -52,7 +52,7 @@ public class MonoTorrentCreator : ITorrentCreator
 
     public string ConstructArtifactPathFromArtifact(TorrentArtifact artifact)
     {
-        var artifactDirectoryPath = Path.Combine(_settings.ArtifactStoragePath, artifact.ID);
+        var artifactDirectoryPath = Path.Combine(_config.ArtifactStoragePath, artifact.ID);
         var artifactFilePath = Directory.GetFiles(artifactDirectoryPath, $"{NameUtil.ToFilePathName(artifact.Name)}.*")
             .FirstOrDefault(f => !f.EndsWith(".torrent") && !f.EndsWith(".meta.json"));
         
@@ -61,7 +61,7 @@ public class MonoTorrentCreator : ITorrentCreator
 
     public string ConstructTorrentPathFromArtifact(TorrentArtifact torrent)
     {        
-        var artifactDirectoryPath = Path.Combine(_settings.ArtifactStoragePath, torrent.ID);
+        var artifactDirectoryPath = Path.Combine(_config.ArtifactStoragePath, torrent.ID);
         var torrentFilePath = Directory.GetFiles(artifactDirectoryPath, $"{NameUtil.ToFilePathName(torrent.Name)}.torrent").FirstOrDefault();
         
         return torrentFilePath ?? throw new FileNotFoundException($"Torrent file for '{torrent.Name}' with ID '{torrent.ID}' not found");
@@ -81,7 +81,7 @@ public class MonoTorrentCreator : ITorrentCreator
         
         var fileName = NameUtil.ToFilePathName(Path.GetFileName(name));
         var id = Guid.NewGuid().ToString();
-        var artifactDirectoryPath = Path.Combine(_settings.ArtifactStoragePath, id);
+        var artifactDirectoryPath = Path.Combine(_config.ArtifactStoragePath, id);
         Directory.CreateDirectory(artifactDirectoryPath);
 
         var artifactFilePath = Path.Combine(artifactDirectoryPath, fileName + Path.GetExtension(Path.GetFileName(filePath)));
@@ -92,12 +92,12 @@ public class MonoTorrentCreator : ITorrentCreator
         File.Copy(filePath, artifactFilePath, true);
         //Generate torrent file
         var creator = new TorrentCreator();
-        creator.Announces.Add([_settings.TrackerUrl+_settings.AnnounceSuffix]);
+        creator.Announces.Add([_config.TrackerUrl+_config.AnnounceSuffix]);
         creator.CreatedBy = "BootTorrent Server";
         creator.Name = name;
         creator.Private = true;
         creator.Comment = $"{id}\n{description}";
-        creator.PieceLength = _settings.PieceLength;
+        creator.PieceLength = _config.PieceLength;
         
         //Create torrent file
         await using (var torrentFileStream = File.Create(torrentFilePath))

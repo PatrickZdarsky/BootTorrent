@@ -1,6 +1,6 @@
-﻿namespace btserver.settings;
+﻿namespace btserver.Config;
 
-public class TorrentSettings
+public class TorrentConfig
 {
     public string TrackerUrl { get; set; }
     

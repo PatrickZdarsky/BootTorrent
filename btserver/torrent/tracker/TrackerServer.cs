@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
+using btserver.Config;
 using MonoTorrent.BEncoding;
-using btserver.settings;
 using Microsoft.Extensions.Options;
 
 namespace btserver.torrent.tracker;
@@ -23,7 +23,7 @@ public class TrackerServer
      *  - Add ability to add more logic to which peers are returned (for the actual use-case of this project)
      */
     
-    public TrackerServer(ILogger<TrackerServer> logger, IOptions<TorrentSettings> settings, ITorrentArtifactRegistry artifactRegistry)
+    public TrackerServer(ILogger<TrackerServer> logger, IOptions<TorrentConfig> settings, ITorrentArtifactRegistry artifactRegistry)
     {
         _logger = logger;
         _artifactRegistry = artifactRegistry;

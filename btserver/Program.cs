@@ -1,8 +1,9 @@
 using boottorrent_lib.communication;
 using boottorrent_lib.communication.codec;
 using btserver;
+using btserver.Config;
+using btserver.Config.Swarm;
 using btserver.handler;
-using btserver.settings;
 using btserver.torrent;
 using btserver.torrent.impl;
 using btserver.torrent.monotorrent;
@@ -16,21 +17,28 @@ builder.Services.AddSerilog(config => config
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext:l}] {Message:lj}{NewLine}{Exception}")
     .WriteTo.File("logs/log.txt", rollingInterval: RollingInterval.Day));
 
-//builder.Services.AddSerilog(); 
-
-// Log.Logger = new LoggerConfiguration()
-//  .ReadFrom.Configuration(builder.Configuration)
-//  .Enrich.FromLogContext()
-//  .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext:l}] {Message:lj}{NewLine}{Exception}")
-//  .WriteTo.File("logs/log.txt", rollingInterval: RollingInterval.Day)
-//  .CreateLogger();
-
 //Config
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
-builder.Services.Configure<TorrentSettings>(builder.Configuration.GetSection("Torrent"));
+builder.Services.Configure<TorrentConfig>(builder.Configuration.GetSection("Torrent"));
+
+builder.Configuration
+    .AddJsonFile("swarm.json", optional: false, reloadOnChange: true);
+
+builder.Services.AddOptions<SwarmConfig>()
+    .Configure<IConfiguration>((options, config) =>
+    {
+        options.Zones = config
+            .GetSection("Zones")
+            .GetChildren()
+            .Select(SwarmConfigBinder.BindZone)
+            .ToList();
+    })
+    .Validate(c => c.Zones.Count > 0, "At least one zone is required.")
+    .ValidateOnStart();
 
 
-//Todo: Fix dependecy issues cause MQTT stuff needs other things but it gets loaded first
+
+//Todo: Fix dependency issues cause MQTT stuff needs other things but it gets loaded first
 //Setup MQTT
 builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
 // builder.Services.Scan(scan => scan
@@ -40,7 +48,6 @@ builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
 //     .WithSingletonLifetime());
 builder.Services.AddTransient<Lazy<ServerMqttService>>(provider => new Lazy<ServerMqttService>(provider.GetService<ServerMqttService>));
 builder.Services.AddSingleton<MachineStartedHandler>();
-builder.Services.AddSingleton<MachineStoppedHandler>();
 
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<ServerMqttService>();

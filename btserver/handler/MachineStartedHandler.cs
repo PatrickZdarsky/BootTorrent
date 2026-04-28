@@ -1,22 +1,20 @@
 ﻿using boottorrent_lib.communication;
 using boottorrent_lib.communication.message;
 using boottorrent_lib.torrent;
+using btserver.Config;
 using btserver.Machine;
-using btserver.settings;
 using btserver.torrent;
 using Microsoft.Extensions.Options;
 
 namespace btserver.handler;
 
-public class MachineStartedHandler(ILogger<MachineStartedHandler> logger, MachineRegistry machineRegistry, 
-    ITorrentArtifactRegistry registry, Lazy<ServerMqttService> mqttService, IOptions<TorrentSettings> settings) : IMessageHandler<MachineStartedMessage>
+public class MachineStartedHandler(ILogger<MachineStartedHandler> logger, 
+    ITorrentArtifactRegistry registry, Lazy<ServerMqttService> mqttService, IOptions<TorrentConfig> settings) : IMessageHandler<MachineStartedMessage>
 {
     public string MessageType => MachineStartedMessage.MessageType;
 
     public async Task HandleAsync(MqttTopicContext context, MachineStartedMessage message)
     {
-        machineRegistry.MachineStarted(context.TargetId!, message.IPAddress);
-
         var artifact = (await registry.GetRegisteredArtifacts()).Values.First();
         var job = new TorrentJob
         {
