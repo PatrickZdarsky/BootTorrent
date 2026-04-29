@@ -25,7 +25,7 @@ public class ZoneRegistry
     private void LoadZonesFromConfig()
     {
         var newZones = _config.CurrentValue.Zones
-            .Select(zoneConfig => ZoneFactory.CreateZone(zoneConfig, _machineRegistry.Machines.Values))
+            .Select(ZoneFactory.CreateZone)
             .ToList();
 
         if (Zones is null || !newZones.SequenceEqual(Zones))

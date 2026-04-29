@@ -2,19 +2,14 @@ using boottorrent_lib.client;
 
 namespace btserver.Zone;
 
-public class StaticZone(string name, ICollection<Machine> machines, List<string> machineIds) : CollectionZone(name, machines), IEquatable<StaticZone>
+public class StaticZone(string name, List<string> machineIds) : IZone, IEquatable<StaticZone>
 {
-    public List<string> MachineIds => machineIds;
+    public string Name => name;
+    private List<string> MachineIds => machineIds;
     
-    public new IEnumerator<Machine> GetEnumerator()
+    public virtual bool Contains(Machine machine)
     {
-        IEnumerable<Machine> ms = this;
-        return ms.Where(m => machineIds.Contains(m.Id)).GetEnumerator();
-    }
-    
-    public override bool Contains(Machine machine)
-    {
-        return machineIds.Contains(machine.Id) && base.Contains(machine);
+        return machineIds.Contains(machine.Id);
     }
 
     public bool Equals(StaticZone? other)

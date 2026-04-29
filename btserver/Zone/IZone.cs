@@ -5,7 +5,7 @@ namespace btserver.Zone;
 /// <summary>
 /// A collection of multiple machines.
 /// </summary>
-public interface IZone : IEnumerable<Machine>
+public interface IZone
 {
     string Name { get; }
     
