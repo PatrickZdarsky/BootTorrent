@@ -9,5 +9,10 @@ public interface IZone
 {
     string Name { get; }
     
-    abstract bool Contains(Machine machine);
+    bool Contains(Machine machine);
+
+    IEnumerable<Machine> Filter(IEnumerable<Machine> machines)
+    {
+        return machines.Where(Contains);
+    }
 }
