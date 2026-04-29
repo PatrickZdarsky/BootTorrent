@@ -42,6 +42,8 @@ public class MachineRegistry(ILogger<MachineRegistry> logger)
             else
             {
                 machine.LastSeen = DateTime.UtcNow;
+                machine.LoadedArtifacts = message.LoadedArtifacts;
+                machine.PendingArtifacts = message.PendingArtifacts;
                 logger.LogTrace("Received heartbeat for machine {MachineId}.", machineId);
             }
             return Task.CompletedTask;
