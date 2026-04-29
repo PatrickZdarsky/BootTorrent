@@ -2,7 +2,6 @@
 using boottorrent_lib.communication.message;
 using boottorrent_lib.torrent;
 using btserver.Config;
-using btserver.Machine;
 using btserver.torrent;
 using Microsoft.Extensions.Options;
 

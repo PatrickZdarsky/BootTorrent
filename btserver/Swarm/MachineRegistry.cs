@@ -1,6 +1,7 @@
+using boottorrent_lib.client;
 using boottorrent_lib.communication.message;
 
-namespace btserver.Machine;
+namespace btserver.Swarm;
 
 public class MachineRegistry(ILogger<MachineRegistry> logger)
 {
