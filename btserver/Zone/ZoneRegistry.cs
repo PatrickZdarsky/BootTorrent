@@ -9,7 +9,7 @@ public class ZoneRegistry
     private readonly MachineRegistry _machineRegistry;
     private readonly IOptionsMonitor<SwarmConfig> _config;
 
-    public List<IZone>? Zones { get; private set; }
+    public List<Zone>? Zones { get; private set; }
     
     public event Action? ZonesUpdated;
     

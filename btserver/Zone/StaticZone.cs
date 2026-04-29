@@ -2,12 +2,11 @@ using boottorrent_lib.client;
 
 namespace btserver.Zone;
 
-public class StaticZone(string name, List<string> machineIds) : IZone, IEquatable<StaticZone>
+public class StaticZone(List<string> machineIds) : Zone, IEquatable<StaticZone>
 {
-    public string Name => name;
     private List<string> MachineIds => machineIds;
     
-    public virtual bool Contains(Machine machine)
+    public override bool Contains(Machine machine)
     {
         return machineIds.Contains(machine.Id);
     }

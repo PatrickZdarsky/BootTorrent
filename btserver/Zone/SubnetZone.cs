@@ -7,13 +7,12 @@ namespace btserver.Zone;
 /// 
 /// </summary>
 /// <param name="subnet">The subnet in CIDR notation (e.g. 192.168.0.0/24)</param>
-public class SubnetZone(string name, string subnet) : IZone, IEquatable<SubnetZone>
+public class SubnetZone(string subnet) : Zone, IEquatable<SubnetZone>
 {
-    public string Name => name;
     private readonly IPNetwork _ipNetwork = IPNetwork.Parse(subnet);
     
 
-    public virtual bool Contains(Machine machine)
+    public override bool Contains(Machine machine)
     {
         return _ipNetwork.Contains(IPAddress.Parse(machine.IpAddress));
     }
