@@ -2,12 +2,14 @@ using boottorrent_lib.communication;
 using boottorrent_lib.communication.codec;
 using btserver;
 using btserver.Config;
-using btserver.Config.Swarm;
+using btserver.Data;
 using btserver.handler;
+using btserver.Swarm;
 using btserver.torrent;
 using btserver.torrent.impl;
 using btserver.torrent.monotorrent;
 using btserver.torrent.tracker;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -18,23 +20,26 @@ builder.Services.AddSerilog(config => config
     .WriteTo.File("logs/log.txt", rollingInterval: RollingInterval.Day));
 
 //Config
+builder.Services.AddDbContext<BtDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
 builder.Services.Configure<TorrentConfig>(builder.Configuration.GetSection("Torrent"));
 
-builder.Configuration
-    .AddJsonFile("swarm.json", optional: false, reloadOnChange: true);
+// builder.Configuration
+//     .AddJsonFile("swarm.json", optional: false, reloadOnChange: true);
 
-builder.Services.AddOptions<SwarmConfig>()
-    .Configure<IConfiguration>((options, config) =>
-    {
-        options.Zones = config
-            .GetSection("Zones")
-            .GetChildren()
-            .Select(SwarmConfigBinder.BindZone)
-            .ToList();
-    })
-    .Validate(c => c.Zones.Count > 0, "At least one zone is required.")
-    .ValidateOnStart();
+// builder.Services.AddOptions<SwarmConfig>()
+//     .Configure<IConfiguration>((options, config) =>
+//     {
+//         options.Zones = config
+//             .GetSection("Zones")
+//             .GetChildren()
+//             .Select(SwarmConfigBinder.BindZone)
+//             .ToList();
+//     })
+//     .Validate(c => c.Zones.Count > 0, "At least one zone is required.")
+//     .ValidateOnStart();
 
 
 
@@ -65,6 +70,8 @@ builder.Services.AddSingleton<TrackerServer>();
 builder.Services.AddSingleton<MonoTorrentSeederService>();
 builder.Services.AddSingleton<ITorrentSeeder>(sp => sp.GetRequiredService<MonoTorrentSeederService>());
 builder.Services.AddSingleton<ITorrentSeederService>(sp => sp.GetRequiredService<MonoTorrentSeederService>());
+
+builder.Services.AddScoped<ArtifactAssigner>();
 
 
 

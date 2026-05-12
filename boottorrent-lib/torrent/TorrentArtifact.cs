@@ -7,7 +7,7 @@ public class TorrentArtifact : Artifact
     public string InfoHashV1 => Torrent.InfoHashV1;
     public string InfoHashV2 => Torrent.InfoHashV2;
     
-    
+    public string TorrentFileUrl { get; init; } = default!;
     
     public TorrentDescriptor Torrent { get; init; } = default!;
     public IntegritySpec IntegritySpec { get; init; } = default!;

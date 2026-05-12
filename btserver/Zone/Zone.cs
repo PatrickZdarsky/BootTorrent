@@ -1,4 +1,7 @@
-﻿using boottorrent_lib.client;
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
+using boottorrent_lib.client;
 
 namespace btserver.Zone;
 
@@ -7,8 +10,19 @@ namespace btserver.Zone;
 /// </summary>
 public abstract class Zone
 {
-    public required string Name { get; init; }
-    public List<string> AssignedArtifactIds { get; init; } = [];
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public Guid Id { get; set; }
+    public required string Name { get; set; }
+    
+    [NotMapped]
+    public List<string> AssignedArtifactIds { get; set; } = [];
+
+    public string AssignedArtifactIdsJson
+    {
+        get => JsonSerializer.Serialize(AssignedArtifactIds);
+        set => AssignedArtifactIds = JsonSerializer.Deserialize<List<string>>(value) ?? [];
+    }
 
 
     public abstract bool Contains(Machine machine);

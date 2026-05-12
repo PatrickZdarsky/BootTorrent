@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.Net;
 using boottorrent_lib.client;
 
 namespace btserver.Zone;
@@ -6,15 +7,32 @@ namespace btserver.Zone;
 /// <summary>
 /// 
 /// </summary>
-/// <param name="subnet">The subnet in CIDR notation (e.g. 192.168.0.0/24)</param>
-public class SubnetZone(string subnet) : Zone, IEquatable<SubnetZone>
+public class SubnetZone : Zone, IEquatable<SubnetZone>
 {
-    private readonly IPNetwork _ipNetwork = IPNetwork.Parse(subnet);
+    public SubnetZone()
+    {
+        
+    }
     
+    public SubnetZone(string subnet)
+    {
+        Subnet = subnet;
+        _ipNetwork = IPNetwork.Parse(subnet);
+    }
+    
+    [NotMapped]
+    private readonly IPNetwork? _ipNetwork;
+    
+    public required string Subnet { get; set; }
+
 
     public override bool Contains(Machine machine)
     {
-        return _ipNetwork.Contains(IPAddress.Parse(machine.IpAddress));
+        if (_ipNetwork == null)
+        {
+            return false;
+        }
+        return _ipNetwork?.Contains(IPAddress.Parse(machine.IpAddress)) ?? false;
     }
 
     public bool Equals(SubnetZone? other)
@@ -34,7 +52,7 @@ public class SubnetZone(string subnet) : Zone, IEquatable<SubnetZone>
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(Name, subnet);
+        return HashCode.Combine(Name, Subnet);
     }
 
     public static bool operator ==(SubnetZone? left, SubnetZone? right)

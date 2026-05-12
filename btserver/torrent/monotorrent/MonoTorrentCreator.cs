@@ -113,6 +113,7 @@ public class MonoTorrentCreator : ITorrentCreator
         {
             ID = id,
             Name = name,
+            TorrentFileUrl = _config.TrackerUrl + _config.TorrentFileGetSuffix + torrent.InfoHashes.V1!.ToHex(),
             Torrent = new TorrentDescriptor()
             {
                 InfoHashV1 = torrent.InfoHashes.V1!.ToHex(),

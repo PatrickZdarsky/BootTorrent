@@ -1,21 +1,40 @@
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 using boottorrent_lib.client;
 
 namespace btserver.Zone;
 
-public class StaticZone(List<string> machineIds) : Zone, IEquatable<StaticZone>
+public class StaticZone : Zone, IEquatable<StaticZone>
 {
-    private List<string> MachineIds => machineIds;
+    public StaticZone()
+    {
+        
+    }
+    
+    public StaticZone(List<string> machineIds)
+    {
+        MachineIds = machineIds;
+    }
+    
+    [NotMapped]
+    public List<string> MachineIds { get; set; } = [];
+    
+    public string MachineIdsJson
+    {
+        get => JsonSerializer.Serialize(MachineIds);
+        set => MachineIds = JsonSerializer.Deserialize<List<string>>(value) ?? [];
+    }
     
     public override bool Contains(Machine machine)
     {
-        return machineIds.Contains(machine.Id);
+        return MachineIds.Contains(machine.Id);
     }
 
     public bool Equals(StaticZone? other)
     {
         if (ReferenceEquals(null, other)) return false;
         if (ReferenceEquals(this, other)) return true;
-        return Name == other.Name && machineIds.SequenceEqual(other.MachineIds);
+        return Name == other.Name && MachineIds.SequenceEqual(other.MachineIds);
     }
 
     public override bool Equals(object? obj)
@@ -28,7 +47,7 @@ public class StaticZone(List<string> machineIds) : Zone, IEquatable<StaticZone>
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(Name, machineIds);
+        return HashCode.Combine(Name, MachineIds);
     }
 
     public static bool operator ==(StaticZone? left, StaticZone? right)
