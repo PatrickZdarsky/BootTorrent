@@ -10,9 +10,12 @@ using btserver.torrent.impl;
 using btserver.torrent.monotorrent;
 using btserver.torrent.tracker;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 using Serilog;
+using Microsoft.AspNetCore.Mvc;
+using System.Text.Json.Serialization;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSerilog(config => config
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
@@ -59,6 +62,7 @@ builder.Services.AddSingleton<ServerMqttService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerMqttService>());
 
 
+builder.Services.AddSingleton<MachineRegistry>();
 //Torrent / Artifact Management
 builder.Services.AddSingleton<ITorrentCreator, MonoTorrentCreator>();
 builder.Services.AddSingleton<TorrentArtifactRegistry>();
@@ -73,13 +77,38 @@ builder.Services.AddSingleton<ITorrentSeederService>(sp => sp.GetRequiredService
 
 builder.Services.AddScoped<ArtifactAssigner>();
 
-
-
-
 builder.Services.AddHostedService<Worker>();
 
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.AddContext<AppJsonSerializerContext>();
+});
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.EnableAnnotations();
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Version = "v1",
+        Title = "BootTorrent API",
+        Description = "An API for managing the BootTorrent swarm",
+    });
+});
 
 var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+
+app.UseAuthorization();
+
+app.MapControllers();
 
 app.Run();
 

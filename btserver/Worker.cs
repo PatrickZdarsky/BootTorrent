@@ -1,4 +1,5 @@
 using boottorrent_lib.torrent;
+using btserver.Swarm;
 using btserver.torrent;
 using btserver.torrent.impl;
 using btserver.torrent.monotorrent;
@@ -6,7 +7,7 @@ using btserver.torrent.tracker;
 
 namespace btserver;
 
-public class Worker(ILogger<Worker> logger, MonoTorrentSeederService seeder, TrackerServer trackerServer, TorrentArtifactRegistry registry) : BackgroundService
+public class Worker(ILogger<Worker> logger, MonoTorrentSeederService seeder, TrackerServer trackerServer, MachineRegistry machineRegistry, TorrentArtifactRegistry registry) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
