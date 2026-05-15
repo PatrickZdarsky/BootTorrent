@@ -1,4 +1,5 @@
 using boottorrent_lib.client;
+using boottorrent_lib.communication;
 using boottorrent_lib.communication.message;
 
 namespace btserver.Swarm;
@@ -15,22 +16,20 @@ public class MachineRegistry
         RegisterHandlers(mqttService);
     }
 
-
     private void RegisterHandlers(ServerMqttService mqttService)
     {
-        mqttService.AddHandler<MachineStartedMessage>(MachineStartedMessage.MessageType,  (context, message) =>
+        mqttService.AddHandler<MachineStartedMessage>(MachineStartedMessage.MessageType, async (context, message) =>
         {
             var machineId = context.TargetId!;
             if (Machines.ContainsKey(machineId))
             {
-                _logger.LogWarning("Received a MachineStarted message for machine {MachineId} which is already registered. Ignoring.", machineId);
-                return Task.CompletedTask;
+                _logger.LogWarning("Received a MachineStarted message for machine {MachineId} which is already registered. Requesting Reregister.", machineId);
+                await mqttService.PublishAsync(new MachineReRegisterMessage(), MqttTopicContext.CreateCommandForMachine(machineId, MachineReRegisterMessage.MessageType));
             }
         
             var machine = new Machine(machineId, message.IPAddress);
             Machines[machineId] = machine;
             _logger.LogInformation("Machine {MachineId} started with IP address {IpAddress}.", machineId, message.IPAddress);
-            return Task.CompletedTask;
         });
         mqttService.AddHandler<MachineStoppedMessage>(MachineStoppedMessage.MessageType, (context, _) =>
         {

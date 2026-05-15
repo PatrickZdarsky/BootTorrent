@@ -19,10 +19,17 @@ public class ClientMqttService : MqttMessageService
     {
         ClientSettings = btClientOptions.Value;
         
-        applicationLifetime.ApplicationStopping.Register(async () =>
+        applicationLifetime.ApplicationStopping.Register(async void () =>
         {
-            await PublishAsync(new MachineStoppedMessage() { IPAddress = "TEST" },
-                EventFromMachine(MachineStoppedMessage.MessageType));
+            try
+            {
+                await PublishAsync(new MachineStoppedMessage { IPAddress = NetworkHelper.GetPrimaryIPv4()?.ToString() ?? "UNKNOWN" },
+                    EventFromMachine(MachineStoppedMessage.MessageType));
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "Error while publishing MachineStoppedMessage during application shutdown");
+            }
         });
     }
 

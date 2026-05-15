@@ -26,7 +26,7 @@ public class ClientStatusWorker : BackgroundService
         
         _mqttService.MqttConnectionEstablished += async (sender, args) =>
         {
-            await _mqttService.PublishAsync(new MachineStartedMessage() { IPAddress = "TEST" },
+            await _mqttService.PublishAsync(new MachineStartedMessage { IPAddress = NetworkHelper.GetPrimaryIPv4()?.ToString() ?? "UNKNOWN" },
                 _mqttService.EventFromMachine(MachineStartedMessage.MessageType));
         };
     }
