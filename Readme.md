@@ -1,75 +1,114 @@
 # BootTorrent
 
-A distributed computer fleet management system designed for large-scale computer deployments. BootTorrent efficiently distributes bootable VHDX images to multiple machines using BitTorrent protocol and manages the boot process through MQTT-based communication.
+BootTorrent is a distributed artifact distribution and fleet coordination system designed for large-scale computer environments. It combines centrally managed orchestration with controlled peer-to-peer distribution using BitTorrent technology to efficiently distribute large artifacts across network zones.
+
+The project focuses on reducing central infrastructure load while maintaining centralized control over distribution policies, topology awareness, and client coordination.
 
 ## Overview
 
-BootTorrent consists of three main components:
+BootTorrent currently consists of three main components:
 
-- **btserver**: Central management server that orchestrates deployments and communicates with clients
-- **btclient**: Client agent running on managed machines that receives commands and reports status
-- **boottorrent-lib**: Shared library containing common communication and transport logic
+- **btserver** – Central coordination server responsible for orchestration, assignments, topology management, and monitoring
+- **btclient** – Client agent running on managed machines that receives assignments, participates in torrent distribution, and reports status
+- **boottorrent-lib** – Shared library containing communication contracts, messaging infrastructure, and transport logic
 
 ## Features
 
-- 🚀 **Distributed Image Distribution**: Uses BitTorrent for efficient peer-to-peer transfer of boot images
-- 📡 **MQTT Communication**: Real-time command and control using MQTT messaging
-- 🏢 **Zone-Based Management**: Organize machines into zones for targeted deployments
-- 📊 **Status Monitoring**: Real-time machine status reporting and heartbeat monitoring
-- 🔒 **Secure Communication**: TLS support for MQTT connections
-- 🐳 **Container Ready**: Docker support for easy deployment
-- ☸️ **Kubernetes Support**: Helm charts included for Kubernetes deployments
+- Distributed artifact distribution using BitTorrent
+- Custom tracker implementation
+- Embedded MonoTorrent client integration
+- MQTT-based command and control communication
+- Zone-aware distribution topology
+- Dynamic artifact assignments
+- Real-time client monitoring and heartbeat tracking
+- Strongly typed messaging contracts
+- PostgreSQL-backed configuration management
+- Docker support
+- Kubernetes deployment support via Helm
 
 ## Architecture
 
-BootTorrent uses an MQTT-based architecture for communication:
+BootTorrent follows a modular distributed architecture consisting of:
+
+- A central coordination layer
+- A messaging and event system
+- A torrent-based transport layer
+- Distributed clients participating in artifact propagation
+
+### Communication Model
+
+BootTorrent uses MQTT for orchestration and status communication.
 
 ### Topic Structure
 
-**Commands (Server → Clients):**
-- `boottorrent/cmd/global/{messageType}` - Broadcast to all machines
-- `boottorrent/cmd/zone/{zoneId}/{messageType}` - Commands to a specific zone
-- `boottorrent/cmd/machine/{machineId}/{messageType}` - Commands to a specific machine
+**Commands (Server → Clients)**
 
-**Events (Clients → Server):**
-- `boottorrent/evt/machine/{machineId}/{messageType}` - Machine status, errors, and events
+- `boottorrent/cmd/global/{messageType}` – Broadcast commands
+- `boottorrent/cmd/zone/{zoneId}/{messageType}` – Zone-targeted commands
+- `boottorrent/cmd/machine/{machineId}/{messageType}` – Machine-specific commands
 
-All messages are encoded using MessagePack or JSON for efficiency.
+**Events (Clients → Server)**
+
+- `boottorrent/evt/machine/{machineId}/{messageType}` – Status updates, heartbeats, and events
+
+Messages are serialized using MessagePack or JSON.
 
 For more details, see [MQTT Topic Plan](wiki/mqtt.md).
 
+## Current State
+
+Implemented functionality includes:
+
+- Fully custom BitTorrent tracker implementation
+- Functional torrent distribution using MonoTorrent clients and seeders
+- Artifact assignment handling on clients
+- Initial PostgreSQL integration for persistent configuration and zone management
+- Continuous client monitoring and status tracking
+- Typed event-driven messaging infrastructure
+
+Planned functionality includes:
+
+- Policy enforcement for controlled proxy downloads
+- Topology-aware intra-zone distribution optimization
+- REST API for configuration and orchestration
+- Extended management functionality for artifacts, clients, and assignments
+- Performance evaluation and benchmarking
+
+## Technology Stack
+
+- .NET 10
+- MQTT
+- MonoTorrent
+- PostgreSQL
+- Docker
+- Kubernetes + Helm
+
 ## Prerequisites
 
-- **.NET 9.0 SDK** or later
-- **MQTT Broker** (e.g., Mosquitto)
-- **Docker** (optional, for containerized deployment)
-- **Kubernetes** (optional, for Helm deployment)
+- .NET 10 SDK or later
+- MQTT broker (e.g. Mosquitto)
+- PostgreSQL
+- Docker (optional)
 
 ## Installation
 
-### Building from Source
+### Clone Repository
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/PatrickZdarsky/BootTorrent.git
-   cd BootTorrent
-   ```
-
-2. Build the solution:
-   ```bash
-   dotnet build
-   ```
-
-3. Run tests (if available):
-   ```bash
-   dotnet test
-   ```
-
-### Docker Build
-
-Build the server container:
 ```bash
-docker build -f btserver/Dockerfile -t boottorrent-server .
+git clone https://github.com/PatrickZdarsky/BootTorrent.git
+cd BootTorrent
+```
+
+### Build
+
+```bash
+dotnet build
+```
+
+### Run Tests
+
+```bash
+dotnet test
 ```
 
 ## Configuration
@@ -87,6 +126,9 @@ Edit `btserver/appsettings.json`:
     "UseTLS": false,
     "Username": "",
     "Password": ""
+  },
+  "Postgres": {
+    "ConnectionString": "Host=localhost;Database=boottorrent;"
   }
 }
 ```
@@ -111,70 +153,23 @@ Edit `btclient/appsettings.json`:
 }
 ```
 
-## Running
 
-### Running the Server
+## Project Structure
 
-```bash
-cd btserver
-dotnet run
-```
-
-### Running the Client
-
-```bash
-cd btclient
-dotnet run
-```
-
-### Using Docker
-
-Run the server:
-```bash
-docker run -d \
-  -v /path/to/appsettings.json:/app/appsettings.json \
-  -p 1883:1883 \
-  boottorrent-server
-```
-
-### Kubernetes Deployment
-
-Deploy using Helm:
-
-```bash
-cd helm
-helm install boottorrent . \
-  --set mqtt.broker=your-mqtt-broker \
-  --namespace boottorrent \
-  --create-namespace
-```
-
-## Development
-
-### Project Structure
-
-```
+```text
 BootTorrent/
 ├── boottorrent-lib/      # Shared library
-│   ├── client/           # Machine and zone models
+│   ├── client/           # Client and zone models
 │   ├── communication/    # MQTT messaging layer
-│   └── transport/        # Artifact deployment logic
-├── btserver/             # Server application
-│   └── handler/          # Message handlers
-├── btclient/             # Client application
+├── btserver/             # Central coordination server
+├── btclient/             # Client runtime
 ├── helm/                 # Kubernetes Helm charts
-└── wiki/                 # Additional documentation
+└── wiki/                 # Documentation
 ```
 
-### Building for Release
+## Native AOT
 
-```bash
-dotnet publish -c Release
-```
-
-### Native AOT Compilation
-
-Both server and client support Native AOT compilation for improved performance:
+Both server and client support Native AOT compilation.
 
 ```bash
 dotnet publish -c Release -r linux-x64
@@ -183,28 +178,30 @@ dotnet publish -c Release -r linux-x64
 ## Logging
 
 Logs are written to:
-- Console output (stdout)
-- `logs/log.txt` (rotating daily)
 
-Configure log levels in `appsettings.json`.
+- Console output
+- `logs/log.txt`
+
+Log levels can be configured in `appsettings.json`.
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+2. Create a feature branch
+3. Commit your changes
+4. Push the branch
 5. Open a Pull Request
 
 ## Known Issues
 
-- MessagePack package has a known moderate severity vulnerability (GHSA-4qm4-8hg2-g2xm)
-- Some AOT compilation warnings related to configuration binding
+- Some Native AOT warnings related to configuration binding
+- REST management API not yet implemented
+- Proxy policy enforcement still missing
 
 ## License
 
-See the repository for license information.
+See repository license information.
 
 ## Support
 
-For issues and questions, please use the GitHub issue tracker.
+Please use the GitHub issue tracker for bug reports, discussions, and feature requests.
