@@ -10,5 +10,5 @@ public interface ITorrentStatus
     double PercentageComplete { get; }
     TorrentDownloadState State { get; }
     
-    enum TorrentDownloadState { DOWNLOADING, DOWNLOADED, WAITING }
+    enum TorrentDownloadState { DOWNLOADING, DOWNLOADED, WAITING, FAILED }
 }

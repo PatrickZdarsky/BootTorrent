@@ -119,10 +119,16 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
 
         // Download torrent file from torrentJob.TorrentFileUrl and save to artifact directory
         byte[] torrentFileBytes;
-        using (var httpClient = httpClientFactory.CreateClient("torrent-file-downloader"))
+        try
         {
+            using var httpClient = httpClientFactory.CreateClient("torrent-file-downloader");
             torrentFileBytes = await httpClient.GetByteArrayAsync(torrentJob.TorrentFileUrl);
+        } catch (Exception e)
+        {
+            logger.LogError(e, "Failed to download torrent file from URL '{TorrentFileUrl}' for artifact ID '{ArtifactId}'", torrentJob.TorrentFileUrl, torrentJob.ArtifactId);
+            return new FailedTorrentStatus {TorrentJob = torrentJob};
         }
+        
         
         //Save torrent file to directory
         var torrentFilePath = GetTorrentFilePath(torrentJob.ArtifactId, torrentJob.Name);

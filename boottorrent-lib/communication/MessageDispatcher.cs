@@ -8,7 +8,7 @@ namespace boottorrent_lib.communication;
 public class MessageDispatcher
 {
     private readonly ILogger<MessageDispatcher> _logger;
-    private readonly Dictionary<string, List<Func<MqttTopicContext, ReadOnlyMemory<byte>, Task>>> _routes;
+    private readonly Lazy<Dictionary<string, List<Func<MqttTopicContext, ReadOnlyMemory<byte>, Task>>>> _routes;
 
     public IMessageCodec Codec { get; }
 
@@ -16,42 +16,45 @@ public class MessageDispatcher
     {
         Codec = codec;
         _logger = logger;
-        _routes = new Dictionary<string, List<Func<MqttTopicContext, ReadOnlyMemory<byte>, Task>>>();
-
-        var handlerInterfaceType = typeof(IMessageHandler<>);
-
-        // Find all registered types implementing IMessageHandler<T>
-        var allHandlerTypes = AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(x => x.GetTypes())
-            .Where(t =>
-                !t.IsAbstract &&
-                t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == handlerInterfaceType)
-            );
-
-        foreach (var handlerType in allHandlerTypes)
+        _routes = new Lazy<Dictionary<string, List<Func<MqttTopicContext, ReadOnlyMemory<byte>, Task>>>>(() =>
         {
-            var iface = handlerType.GetInterfaces().First(i =>
-                i.IsGenericType && i.GetGenericTypeDefinition() == handlerInterfaceType);
+            var routes = new Dictionary<string, List<Func<MqttTopicContext, ReadOnlyMemory<byte>, Task>>>();
+            var handlerInterfaceType = typeof(IMessageHandler<>);
 
-            var messageType = iface.GetGenericArguments()[0];
-            var handlerInstance = provider.GetRequiredService(handlerType);
+            var allHandlerTypes = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(x => x.GetTypes())
+                .Where(t =>
+                    !t.IsAbstract &&
+                    t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == handlerInterfaceType)
+                );
 
-            var messageTypeProp = handlerInterfaceType.MakeGenericType(messageType)
-                .GetProperty(nameof(IMessageHandler<>.MessageType))!;
-
-            var eventTypeKey = messageTypeProp.GetValue(handlerInstance)?.ToString()!.ToLowerInvariant();
-            if (eventTypeKey is null) continue;
-
-            var handlers = GetOrCreateHandlersEntry(eventTypeKey);
-            handlers.Add(async (machineId, payload) =>
+            foreach (var handlerType in allHandlerTypes)
             {
-                var method = typeof(IMessageCodec).GetMethod(nameof(IMessageCodec.Decode))!.MakeGenericMethod(messageType);
-                var msg = method.Invoke(Codec, [payload])!;
+                var iface = handlerType.GetInterfaces().First(i =>
+                    i.IsGenericType && i.GetGenericTypeDefinition() == handlerInterfaceType);
 
-                var handleMethod = iface.GetMethod("HandleAsync")!;
-                await (Task)handleMethod.Invoke(handlerInstance, [machineId, msg])!;
-            });
-        }
+                var messageType = iface.GetGenericArguments()[0];
+                var handlerInstance = provider.GetRequiredService(handlerType);
+
+                var messageTypeProp = handlerInterfaceType.MakeGenericType(messageType)
+                    .GetProperty(nameof(IMessageHandler<IMqttMessage>.MessageType))!;
+
+                var eventTypeKey = messageTypeProp.GetValue(handlerInstance)?.ToString()!.ToLowerInvariant();
+                if (eventTypeKey is null) continue;
+
+                var handlers = GetOrCreateHandlersEntry(routes, eventTypeKey);
+                handlers.Add(async (machineId, payload) =>
+                {
+                    var method = typeof(IMessageCodec).GetMethod(nameof(IMessageCodec.Decode))!.MakeGenericMethod(messageType);
+                    var msg = method.Invoke(Codec, [payload])!;
+
+                    var handleMethod = iface.GetMethod("HandleAsync")!;
+                    await (Task)handleMethod.Invoke(handlerInstance, [machineId, msg])!;
+                });
+            }
+
+            return routes;
+        });
     }
 
     public void AddHandler<TMessage>(string messageTypeKey, Func<MqttTopicContext, TMessage, Task> handler)
@@ -59,7 +62,7 @@ public class MessageDispatcher
     {
         var key = messageTypeKey.ToLowerInvariant();
         
-        var handlers = GetOrCreateHandlersEntry(key);
+        var handlers = GetOrCreateHandlersEntry(_routes.Value, key);
         handlers.Add(async (context, payload) =>
         {
             var messageType = typeof(TMessage);
@@ -70,12 +73,12 @@ public class MessageDispatcher
         });
     }
     
-    private List<Func<MqttTopicContext, ReadOnlyMemory<byte>, Task>> GetOrCreateHandlersEntry(string eventTypeKey)
+    private List<Func<MqttTopicContext, ReadOnlyMemory<byte>, Task>> GetOrCreateHandlersEntry(Dictionary<string, List<Func<MqttTopicContext, ReadOnlyMemory<byte>, Task>>> routes, string eventTypeKey)
     {
-        if (_routes.TryGetValue(eventTypeKey, out var value)) return value;
+        if (routes.TryGetValue(eventTypeKey, out var value)) return value;
         
         value = [];
-        _routes[eventTypeKey] = value;
+        routes[eventTypeKey] = value;
 
         return value;
     }
@@ -84,7 +87,7 @@ public class MessageDispatcher
     {
         var context = MqttTopicContext.Parse(topic);
         
-        if (_routes.TryGetValue(context.MessageType, out var handlers))
+        if (_routes.Value.TryGetValue(context.MessageType, out var handlers))
         {
             var tasks = handlers.Select(handler => handler(context, payload));
             await Task.WhenAll(tasks);

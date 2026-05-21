@@ -18,18 +18,19 @@ public class MachineRegistry
 
     private void RegisterHandlers(ServerMqttService mqttService)
     {
-        mqttService.AddHandler<MachineStartedMessage>(MachineStartedMessage.MessageType, async (context, message) =>
+        mqttService.AddHandler<MachineStartedMessage>(MachineStartedMessage.MessageType, (context, message) =>
         {
             var machineId = context.TargetId!;
             if (Machines.ContainsKey(machineId))
             {
-                _logger.LogWarning("Received a MachineStarted message for machine {MachineId} which is already registered. Requesting Reregister.", machineId);
-                await mqttService.PublishAsync(new MachineReRegisterMessage(), MqttTopicContext.CreateCommandForMachine(machineId, MachineReRegisterMessage.MessageType));
+                _logger.LogWarning("Received a MachineStarted message for machine {MachineId} which is already registered. Ignoring.", machineId);
+                return Task.CompletedTask;
             }
         
             var machine = new Machine(machineId, message.IPAddress);
             Machines[machineId] = machine;
             _logger.LogInformation("Machine {MachineId} started with IP address {IpAddress}.", machineId, message.IPAddress);
+            return Task.CompletedTask;
         });
         mqttService.AddHandler<MachineStoppedMessage>(MachineStoppedMessage.MessageType, (context, _) =>
         {
@@ -37,13 +38,13 @@ public class MachineRegistry
             _logger.LogInformation("Machine {MachineId} stopped.", context.TargetId);
             return Task.CompletedTask;
         });
-        mqttService.AddHandler<MachineHeartbeatMessage>(MachineHeartbeatMessage.MessageType, (context, message) =>
+        mqttService.AddHandler<MachineHeartbeatMessage>(MachineHeartbeatMessage.MessageType, async (context, message) =>
         {
             var machineId = context.TargetId!;
             if (!Machines.TryGetValue(machineId, out var machine))
             {
-                _logger.LogWarning("Received a heartbeat for machine {MachineId} which is not registered. Ignoring.", machineId);
-                //Todo: Send command to machine to register itself again
+                _logger.LogWarning("Received a MachineStarted message for machine {MachineId} which is already registered. Requesting Reregister.", machineId);
+                await mqttService.PublishAsync(new MachineReRegisterMessage(), MqttTopicContext.CreateCommandForMachine(machineId, MachineReRegisterMessage.MessageType));
             }
             else
             {
@@ -52,7 +53,6 @@ public class MachineRegistry
                 machine.PendingArtifacts = message.PendingArtifacts;
                 _logger.LogTrace("Received heartbeat for machine {MachineId}.", machineId);
             }
-            return Task.CompletedTask;
         });
     }
 }

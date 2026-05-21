@@ -6,6 +6,7 @@ namespace boottorrent_lib.communication.codec;
 [JsonSerializable(typeof(MachineStartedMessage))]
 [JsonSerializable(typeof(MachineStoppedMessage))]
 [JsonSerializable(typeof(MachineHeartbeatMessage))]
+[JsonSerializable(typeof(MachineReRegisterMessage))]
 [JsonSerializable(typeof(ArtifactAssignmentMessage))]
 [JsonSerializable(typeof(ArtifactUnassignmentMessage))]
 [JsonSourceGenerationOptions(WriteIndented = false)]

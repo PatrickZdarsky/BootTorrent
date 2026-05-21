@@ -12,9 +12,9 @@ public class Worker(ILogger<Worker> logger, MonoTorrentSeederService seeder, Tra
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Worker starting at: {time}", DateTimeOffset.Now);
+        trackerServer.Start(stoppingToken);
         await seeder.StartAsync(stoppingToken);
         await registry.StartAsync(stoppingToken);
-        trackerServer.Start(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
