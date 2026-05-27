@@ -51,6 +51,17 @@ public class MqttTopicContext
             MessageType = messageType
         };
     }
+
+    public static MqttTopicContext CreateCommandForZone(string zoneId, string messageType)
+    {
+        return new MqttTopicContext
+        {
+            Direction = MqttDirection.Command,
+            Scope = MqttScope.Zone,
+            TargetId = zoneId,
+            MessageType = messageType
+        };
+    }
     
     public static MqttTopicContext Parse(string topic)
     {

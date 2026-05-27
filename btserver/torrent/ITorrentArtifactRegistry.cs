@@ -10,6 +10,7 @@ public interface ITorrentArtifactRegistry
     Task<TorrentArtifact> GetArtifactByIdAsync(string artifactId);
     Task<string> GetTorrentFilePathAsync(string artifactId);
     Task<string> GetArtifactContentPathAsync(string artifactId);
+    Task<bool> UnregisterArtifactAsync(string artifactId, bool deleteFiles, CancellationToken cancellationToken);
     TorrentArtifact? GetArtifactByInfoHash(string announceRequestInfoHash);
     
     event EventHandler<TorrentArtifact> ArtifactRegistered;

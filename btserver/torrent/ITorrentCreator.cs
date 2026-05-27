@@ -10,4 +10,5 @@ public interface ITorrentCreator
 
     string ConstructArtifactPathFromArtifact(TorrentArtifact artifact);
     string ConstructTorrentPathFromArtifact(TorrentArtifact torrent);
+    string ConstructArtifactDirectoryPath(TorrentArtifact artifact);
 }

@@ -62,6 +62,56 @@ public class TorrentArtifactRegistry(
         return artifact is null ? throw new KeyNotFoundException($"Artifact with ID '{artifactId}' not found") : Task.FromResult(torrentCreator.ConstructArtifactPathFromArtifact(artifact));
     }
 
+    public async Task<bool> UnregisterArtifactAsync(string artifactId, bool deleteFiles, CancellationToken cancellationToken)
+    {
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            if (!_artifacts.TryRemove(artifactId, out var artifact))
+            {
+                return false;
+            }
+
+            torrentCreator.LoadedArtifacts.RemoveAll(existingArtifact => string.Equals(existingArtifact.ID, artifactId, StringComparison.Ordinal));
+
+            if (deleteFiles)
+            {
+                var artifactDirectoryPath = torrentCreator.ConstructArtifactDirectoryPath(artifact);
+                if (Directory.Exists(artifactDirectoryPath))
+                {
+                    try
+                    {
+                        Directory.Delete(artifactDirectoryPath, recursive: true);
+                    }
+                    catch (IOException ex)
+                    {
+                        logger.LogWarning(
+                            ex,
+                            "Artifact {ArtifactId} was unregistered, but deleting artifact directory {ArtifactDirectoryPath} failed due to an I/O error.",
+                            artifact.ID,
+                            artifactDirectoryPath);
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        logger.LogWarning(
+                            ex,
+                            "Artifact {ArtifactId} was unregistered, but deleting artifact directory {ArtifactDirectoryPath} failed due to insufficient permissions.",
+                            artifact.ID,
+                            artifactDirectoryPath);
+                    }
+                }
+            }
+
+            ArtifactUnRegistered?.Invoke(this, artifact);
+            logger.LogInformation("Unregistered torrent artifact with ID '{ArtifactId}' for '{Name}'", artifact.ID, artifact.Name);
+            return true;
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await torrentCreator.LoadExistingArtifactsAsync();

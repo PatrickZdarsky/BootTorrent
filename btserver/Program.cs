@@ -82,6 +82,7 @@ builder.Services.AddSingleton<ITorrentSeeder>(sp => sp.GetRequiredService<MonoTo
 builder.Services.AddSingleton<ITorrentSeederService>(sp => sp.GetRequiredService<MonoTorrentSeederService>());
 
 builder.Services.AddScoped<ArtifactAssigner>();
+builder.Services.AddScoped<ZoneArtifactAssignmentService>();
 
 builder.Services.AddHostedService<Worker>();
 

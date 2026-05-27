@@ -2,6 +2,7 @@ using boottorrent_lib.client;
 using btserver.Controllers.Dto;
 using btserver.Data;
 using btserver.Zone;
+using boottorrent_lib.torrent;
 
 namespace btserver.Controllers.Mapping
 {
@@ -54,6 +55,19 @@ namespace btserver.Controllers.Mapping
                 ZoneName = zoneName,
                 ProxyCount = configuration.ProxyCount,
                 ProxyMachineIds = configuration.ProxyMachineIds
+            };
+        }
+
+        public static ArtifactDto ToDto(this TorrentArtifact artifact, IEnumerable<Guid> assignedZoneIds)
+        {
+            return new ArtifactDto
+            {
+                Id = artifact.ID,
+                Name = artifact.Name,
+                InfoHashV1 = artifact.InfoHashV1,
+                InfoHashV2 = artifact.InfoHashV2,
+                TorrentFileUrl = artifact.TorrentFileUrl,
+                AssignedZoneIds = assignedZoneIds.ToList()
             };
         }
     }

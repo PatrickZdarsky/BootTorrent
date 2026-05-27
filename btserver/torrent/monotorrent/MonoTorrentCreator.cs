@@ -52,7 +52,7 @@ public class MonoTorrentCreator : ITorrentCreator
 
     public string ConstructArtifactPathFromArtifact(TorrentArtifact artifact)
     {
-        var artifactDirectoryPath = Path.Combine(_config.ArtifactStoragePath, artifact.ID);
+        var artifactDirectoryPath = ConstructArtifactDirectoryPath(artifact);
         var artifactFilePath = Directory.GetFiles(artifactDirectoryPath, $"{NameUtil.ToFilePathName(artifact.Name)}.*")
             .FirstOrDefault(f => !f.EndsWith(".torrent") && !f.EndsWith(".meta.json"));
         
@@ -61,10 +61,15 @@ public class MonoTorrentCreator : ITorrentCreator
 
     public string ConstructTorrentPathFromArtifact(TorrentArtifact torrent)
     {        
-        var artifactDirectoryPath = Path.Combine(_config.ArtifactStoragePath, torrent.ID);
+        var artifactDirectoryPath = ConstructArtifactDirectoryPath(torrent);
         var torrentFilePath = Directory.GetFiles(artifactDirectoryPath, $"{NameUtil.ToFilePathName(torrent.Name)}.torrent").FirstOrDefault();
         
         return torrentFilePath ?? throw new FileNotFoundException($"Torrent file for '{torrent.Name}' with ID '{torrent.ID}' not found");
+    }
+
+    public string ConstructArtifactDirectoryPath(TorrentArtifact artifact)
+    {
+        return Path.Combine(_config.ArtifactStoragePath, artifact.ID);
     }
 
     public async Task<TorrentArtifact> GenerateTorrentArtifactAsync(string name, string description, string filePath)

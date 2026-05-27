@@ -14,6 +14,10 @@ namespace btserver;
 [JsonSerializable(typeof(SubnetZonePolicyDto))]
 [JsonSerializable(typeof(SubnetZonePolicyZoneConfigurationDto))]
 [JsonSerializable(typeof(UpsertSubnetZonePolicyConfigurationRequestDto))]
+[JsonSerializable(typeof(List<ArtifactDto>))]
+[JsonSerializable(typeof(ArtifactDto))]
+[JsonSerializable(typeof(CreateArtifactRequestDto))]
+[JsonSerializable(typeof(ZoneArtifactAssignmentResultDto))]
 internal partial class AppJsonSerializerContext : JsonSerializerContext
 {
 }
