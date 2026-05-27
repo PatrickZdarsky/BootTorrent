@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using boottorrent_lib.client;
 using btserver.Config;
+using btserver.Controllers.Dto;
 using btserver.Data;
 using btserver.Swarm;
 using btserver.torrent.tracker;
@@ -18,8 +19,7 @@ public class SubnetZoneTorrentAccessPolicy : ITorrentAccessPolicy
     private readonly TorrentConfig _torrentConfig;
     private readonly ILogger<SubnetZoneTorrentAccessPolicy> _logger;
     private readonly ConcurrentDictionary<Guid, ProxyAssignment> _proxyAssignments = new();
-    private readonly Lock _proxyCountLock = new();
-    private int _proxyCount;
+    private readonly int _defaultProxyCount;
 
     public SubnetZoneTorrentAccessPolicy(
         ISeederRegistry seederRegistry,
@@ -33,7 +33,7 @@ public class SubnetZoneTorrentAccessPolicy : ITorrentAccessPolicy
         _scopeFactory = scopeFactory;
         _torrentConfig = settings.Value;
         _logger = logger;
-        _proxyCount = Math.Max(1, proxyCount);
+        _defaultProxyCount = Math.Max(1, proxyCount);
 
         machineRegistry.MachineStarted += OnMachineStarted;
         machineRegistry.MachineStopped += OnMachineStopped;
@@ -43,12 +43,149 @@ public class SubnetZoneTorrentAccessPolicy : ITorrentAccessPolicy
 
     public int Priority => 100;
 
-    public void SetProxyCount(int proxyCount)
+    public async Task<SubnetZonePolicyDto> GetConfigurationAsync(CancellationToken cancellationToken = default)
     {
-        lock (_proxyCountLock)
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<BtDbContext>();
+
+        var zones = await dbContext.SubnetZones
+            .AsNoTracking()
+            .OrderBy(zone => zone.Name)
+            .ToListAsync(cancellationToken);
+
+        var savedConfigurations = await dbContext.SubnetZonePolicyConfigurations
+            .AsNoTracking()
+            .ToDictionaryAsync(configuration => configuration.ZoneId, cancellationToken);
+
+        return new SubnetZonePolicyDto
         {
-            _proxyCount = Math.Max(1, proxyCount);
+            Name = Name,
+            Priority = Priority,
+            Zones = zones.Select(zone =>
+            {
+                var configuration = savedConfigurations.GetValueOrDefault(zone.Id) ?? CreateDefaultConfiguration(zone.Id);
+                var assignment = _proxyAssignments.GetValueOrDefault(zone.Id);
+                var proxyMachineIds = assignment?.SnapshotProxyMachineIds() ?? configuration.ProxyMachineIds;
+
+                return new SubnetZonePolicyZoneConfigurationDto
+                {
+                    ZoneId = zone.Id,
+                    ZoneName = zone.Name,
+                    ProxyCount = configuration.ProxyCount,
+                    ProxyMachineIds = proxyMachineIds
+                };
+            }).ToList()
+        };
+    }
+
+    public async Task<SubnetZonePolicyZoneConfigurationDto?> GetZoneConfigurationAsync(Guid zoneId, CancellationToken cancellationToken = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<BtDbContext>();
+
+        var zone = await dbContext.SubnetZones
+            .AsNoTracking()
+            .FirstOrDefaultAsync(existingZone => existingZone.Id == zoneId, cancellationToken);
+
+        if (zone is null)
+        {
+            return null;
         }
+
+        var configuration = await dbContext.SubnetZonePolicyConfigurations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(existingConfiguration => existingConfiguration.ZoneId == zoneId, cancellationToken)
+            ?? CreateDefaultConfiguration(zoneId);
+
+        var assignment = _proxyAssignments.GetValueOrDefault(zoneId);
+        return new SubnetZonePolicyZoneConfigurationDto
+        {
+            ZoneId = zone.Id,
+            ZoneName = zone.Name,
+            ProxyCount = configuration.ProxyCount,
+            ProxyMachineIds = assignment?.SnapshotProxyMachineIds() ?? configuration.ProxyMachineIds
+        };
+    }
+
+    public async Task<SubnetZonePolicyZoneConfigurationDto?> UpsertZoneConfigurationAsync(
+        Guid zoneId,
+        int proxyCount,
+        IEnumerable<string>? proxyMachineIds,
+        CancellationToken cancellationToken = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<BtDbContext>();
+
+        var zone = await dbContext.SubnetZones
+            .FirstOrDefaultAsync(existingZone => existingZone.Id == zoneId, cancellationToken);
+
+        if (zone is null)
+        {
+            return null;
+        }
+
+        var normalizedProxyMachineIds = (proxyMachineIds ?? [])
+            .Where(machineId => !string.IsNullOrWhiteSpace(machineId))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var configuration = await dbContext.SubnetZonePolicyConfigurations
+            .FirstOrDefaultAsync(existingConfiguration => existingConfiguration.ZoneId == zoneId, cancellationToken);
+
+        if (configuration is null)
+        {
+            configuration = new SubnetZonePolicyConfiguration
+            {
+                ZoneId = zoneId
+            };
+            dbContext.SubnetZonePolicyConfigurations.Add(configuration);
+        }
+
+        configuration.ProxyCount = Math.Max(1, proxyCount);
+        configuration.ProxyMachineIds = normalizedProxyMachineIds;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var assignment = _proxyAssignments.AddOrUpdate(
+            zoneId,
+            _ => new ProxyAssignment(zone.Name, configuration.ProxyMachineIds),
+            (_, existingAssignment) =>
+            {
+                lock (existingAssignment.SyncRoot)
+                {
+                    existingAssignment.ZoneName = zone.Name;
+                    existingAssignment.ReplaceProxyMachineIds(configuration.ProxyMachineIds);
+                }
+
+                return existingAssignment;
+            });
+
+        return new SubnetZonePolicyZoneConfigurationDto
+        {
+            ZoneId = zoneId,
+            ZoneName = zone.Name,
+            ProxyCount = configuration.ProxyCount,
+            ProxyMachineIds = assignment.SnapshotProxyMachineIds()
+        };
+    }
+
+    public async Task<bool> DeleteZoneConfigurationAsync(Guid zoneId, CancellationToken cancellationToken = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<BtDbContext>();
+
+        var configuration = await dbContext.SubnetZonePolicyConfigurations
+            .FirstOrDefaultAsync(existingConfiguration => existingConfiguration.ZoneId == zoneId, cancellationToken);
+
+        _proxyAssignments.TryRemove(zoneId, out _);
+
+        if (configuration is null)
+        {
+            return false;
+        }
+
+        dbContext.SubnetZonePolicyConfigurations.Remove(configuration);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     public async Task<bool> CanHandleAsync(TorrentPeerRequest request, CancellationToken cancellationToken = default)
@@ -86,7 +223,7 @@ public class SubnetZoneTorrentAccessPolicy : ITorrentAccessPolicy
             return [];
         }
 
-        var proxyMachineIds = GetOrUpdateProxyMachineIds(subnetZone, zoneMachines);
+        var proxyMachineIds = await GetOrUpdateProxyMachineIdsAsync(subnetZone, zoneMachines, cancellationToken);
 
         var candidatePeers = request.AvailablePeers
             .Where(peer => peer.PeerId != request.RequestingPeer.PeerId)
@@ -129,24 +266,24 @@ public class SubnetZoneTorrentAccessPolicy : ITorrentAccessPolicy
         return fallbackSeederPeers.Take(request.MaxPeers).ToList();
     }
 
-    private IReadOnlyList<string> GetOrUpdateProxyMachineIds(SubnetZone subnetZone, List<Machine> zoneMachines)
+    private async Task<IReadOnlyList<string>> GetOrUpdateProxyMachineIdsAsync(SubnetZone subnetZone, List<Machine> zoneMachines, CancellationToken cancellationToken)
     {
-        int proxyCount;
-        lock (_proxyCountLock)
-        {
-            proxyCount = _proxyCount;
-        }
-
-        var desiredCount = Math.Clamp(proxyCount, 1, zoneMachines.Count);
+        var configuration = await GetOrCreateZoneConfigurationAsync(subnetZone, cancellationToken);
+        var desiredCount = Math.Clamp(configuration.ProxyCount, 1, zoneMachines.Count);
         var activeMachineIds = zoneMachines
             .Select(machine => machine.Id)
             .ToHashSet(StringComparer.Ordinal);
 
-        var assignment = _proxyAssignments.GetOrAdd(subnetZone.Id, _ => new ProxyAssignment(subnetZone.Name));
+        var assignment = _proxyAssignments.GetOrAdd(
+            subnetZone.Id,
+            _ => new ProxyAssignment(subnetZone.Name, configuration.ProxyMachineIds));
+
+        var changed = false;
+        List<string> proxyMachineIds;
         lock (assignment.SyncRoot)
         {
             assignment.ZoneName = subnetZone.Name;
-            assignment.ProxyMachineIds.RemoveAll(machineId => !activeMachineIds.Contains(machineId));
+            changed = assignment.ProxyMachineIds.RemoveAll(machineId => !activeMachineIds.Contains(machineId)) > 0;
 
             var assignedMachineIds = assignment.ProxyMachineIds.ToHashSet(StringComparer.Ordinal);
             foreach (var machine in zoneMachines)
@@ -159,16 +296,25 @@ public class SubnetZoneTorrentAccessPolicy : ITorrentAccessPolicy
                 if (assignedMachineIds.Add(machine.Id))
                 {
                     assignment.ProxyMachineIds.Add(machine.Id);
+                    changed = true;
                 }
             }
 
             if (assignment.ProxyMachineIds.Count > desiredCount)
             {
                 assignment.ProxyMachineIds.RemoveRange(desiredCount, assignment.ProxyMachineIds.Count - desiredCount);
+                changed = true;
             }
 
-            return assignment.ProxyMachineIds.ToList();
+            proxyMachineIds = assignment.ProxyMachineIds.ToList();
         }
+
+        if (changed || !ProxyMachineIdsMatch(configuration.ProxyMachineIds, proxyMachineIds))
+        {
+            await SaveZoneConfigurationAsync(subnetZone.Id, configuration.ProxyCount, proxyMachineIds, cancellationToken);
+        }
+
+        return proxyMachineIds;
     }
 
     private async Task<SubnetZone?> GetMatchingSubnetZoneAsync(Machine machine, CancellationToken cancellationToken)
@@ -268,17 +414,93 @@ public class SubnetZoneTorrentAccessPolicy : ITorrentAccessPolicy
             machineAddress.Equals(ipAddress));
     }
 
+    private async Task<SubnetZonePolicyConfiguration> GetOrCreateZoneConfigurationAsync(SubnetZone subnetZone, CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<BtDbContext>();
+
+        var configuration = await dbContext.SubnetZonePolicyConfigurations
+            .FirstOrDefaultAsync(existingConfiguration => existingConfiguration.ZoneId == subnetZone.Id, cancellationToken);
+
+        if (configuration is not null)
+        {
+            return configuration;
+        }
+
+        configuration = CreateDefaultConfiguration(subnetZone.Id);
+        dbContext.SubnetZonePolicyConfigurations.Add(configuration);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return configuration;
+    }
+
+    private async Task SaveZoneConfigurationAsync(Guid zoneId, int proxyCount, IReadOnlyCollection<string> proxyMachineIds, CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<BtDbContext>();
+
+        var configuration = await dbContext.SubnetZonePolicyConfigurations
+            .FirstOrDefaultAsync(existingConfiguration => existingConfiguration.ZoneId == zoneId, cancellationToken);
+
+        if (configuration is null)
+        {
+            configuration = new SubnetZonePolicyConfiguration
+            {
+                ZoneId = zoneId
+            };
+            dbContext.SubnetZonePolicyConfigurations.Add(configuration);
+        }
+
+        configuration.ProxyCount = Math.Max(1, proxyCount);
+        configuration.ProxyMachineIds = proxyMachineIds.ToList();
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private SubnetZonePolicyConfiguration CreateDefaultConfiguration(Guid zoneId)
+    {
+        return new SubnetZonePolicyConfiguration
+        {
+            ZoneId = zoneId,
+            ProxyCount = _defaultProxyCount,
+            ProxyMachineIds = []
+        };
+    }
+
+    private static bool ProxyMachineIdsMatch(IReadOnlyList<string> left, IReadOnlyList<string> right)
+    {
+        return left.SequenceEqual(right);
+    }
+
     private sealed class ProxyAssignment
     {
-        public ProxyAssignment(string zoneName)
+        public ProxyAssignment(string zoneName, IEnumerable<string>? proxyMachineIds = null)
         {
             ZoneName = zoneName;
+            ProxyMachineIds = (proxyMachineIds ?? [])
+                .Where(machineId => !string.IsNullOrWhiteSpace(machineId))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
         }
 
         public object SyncRoot { get; } = new();
 
         public string ZoneName { get; set; }
 
-        public List<string> ProxyMachineIds { get; } = [];
+        public List<string> ProxyMachineIds { get; }
+
+        public List<string> SnapshotProxyMachineIds()
+        {
+            lock (SyncRoot)
+            {
+                return ProxyMachineIds.ToList();
+            }
+        }
+
+        public void ReplaceProxyMachineIds(IEnumerable<string> proxyMachineIds)
+        {
+            ProxyMachineIds.Clear();
+            ProxyMachineIds.AddRange(proxyMachineIds
+                .Where(machineId => !string.IsNullOrWhiteSpace(machineId))
+                .Distinct(StringComparer.Ordinal));
+        }
     }
 }

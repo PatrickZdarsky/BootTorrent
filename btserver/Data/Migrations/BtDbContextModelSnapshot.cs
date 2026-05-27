@@ -17,6 +17,26 @@ namespace btserver.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.7");
 
+            modelBuilder.Entity("btserver.Data.SubnetZonePolicyConfiguration", b =>
+                {
+                    b.Property<Guid>("ZoneId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProxyCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProxyMachineIdsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
+                    b.HasKey("ZoneId");
+
+                    b.ToTable("SubnetZonePolicyConfigurations");
+                });
+
             modelBuilder.Entity("btserver.Zone.Zone", b =>
                 {
                     b.Property<Guid>("Id")
