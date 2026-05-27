@@ -28,6 +28,7 @@ builder.Services.AddDbContext<BtDbContext>(options =>
 
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
 builder.Services.Configure<TorrentConfig>(builder.Configuration.GetSection("Torrent"));
+builder.Services.Configure<MachineRegistryConfig>(builder.Configuration.GetSection("MachineRegistry"));
 
 // builder.Configuration
 //     .AddJsonFile("swarm.json", optional: false, reloadOnChange: true);
@@ -63,6 +64,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerMqttService>
 
 
 builder.Services.AddSingleton<MachineRegistry>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MachineRegistry>());
 //Torrent / Artifact Management
 builder.Services.AddSingleton<ITorrentCreator, MonoTorrentCreator>();
 builder.Services.AddSingleton<TorrentArtifactRegistry>();

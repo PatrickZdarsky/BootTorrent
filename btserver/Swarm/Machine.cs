@@ -10,6 +10,6 @@ public class Machine(string id, string ipAddress)
     public string IpAddress { get; } = ipAddress;
     
     public DateTime LastSeen { get; set; } = DateTime.UtcNow;
-    public List<string> LoadedArtifacts { get; set; }
-    public Dictionary<string, double> PendingArtifacts { get; set; }
+    public List<string> LoadedArtifacts { get; set; } = [];
+    public Dictionary<string, double> PendingArtifacts { get; set; } = [];
 }
