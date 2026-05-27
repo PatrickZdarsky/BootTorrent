@@ -1,21 +1,29 @@
-﻿using boottorrent_lib.torrent;
+﻿using boottorrent_lib.client;
+using btserver.torrent.tracker;
 
 namespace btserver.torrent;
 
 public interface ITorrentAccessPolicy
 {
-    /// <summary>
-    /// Main entry point for individual torrent clients to manage which torrents they can access directly from the server
-    /// </summary>
-    /// <param name="clientId">The id of the client which is requesting available torrents</param>
-    /// <returns></returns>
-    Task<List<TorrentArtifact>> GetAvailableTorrentsAsync(string clientId);
+    string Name { get; }
+
+    int Priority { get; }
 
     /// <summary>
-    /// Used to check if a client is allowed to access a specific torrent, this is used by the TorrentSeeder before allowing a client to download a torrent from the server
+    /// Determines whether this policy should be used for the current requesting machine and announce context.
     /// </summary>
-    /// <param name="clientId"></param>
-    /// <param name="torrentInfoHash"></param>
-    /// <returns></returns>
-    Task<bool> CanAccessInfoHash(string clientId, string torrentInfoHash);
+    Task<bool> CanHandleAsync(TorrentPeerRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Selects the peers which should be returned to a requesting BitTorrent client for a tracker announce.
+    /// </summary>
+    Task<IReadOnlyList<Peer>> GetPeersForAnnounceAsync(TorrentPeerRequest request, CancellationToken cancellationToken = default);
 }
+
+public sealed record TorrentPeerRequest(
+    string InfoHash,
+    Peer RequestingPeer,
+    IReadOnlyCollection<Peer> AvailablePeers,
+    int MaxPeers,
+    Machine? RequestingMachine,
+    IReadOnlyCollection<Machine> ActiveMachines);

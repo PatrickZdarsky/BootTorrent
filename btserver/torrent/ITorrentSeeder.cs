@@ -11,9 +11,4 @@ public interface ITorrentSeeder
     string getClientId();
     
     IPEndPoint GetClientEndpoint();
-
-    PeerInfo GetPeerInfo()
-    {
-        return new PeerInfo(new Uri(GetClientEndpoint().ToString()), getClientId(), true);
-    }
 }

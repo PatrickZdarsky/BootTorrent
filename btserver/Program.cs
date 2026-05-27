@@ -67,8 +67,12 @@ builder.Services.AddSingleton<MachineRegistry>();
 builder.Services.AddSingleton<ITorrentCreator, MonoTorrentCreator>();
 builder.Services.AddSingleton<TorrentArtifactRegistry>();
 builder.Services.AddSingleton<ITorrentArtifactRegistry>(sp => sp.GetRequiredService<TorrentArtifactRegistry>());
-builder.Services.AddSingleton<ITorrentAccessPolicy, TorrentAccessPolicy>();
 builder.Services.AddSingleton<ISeederRegistry, SeederRegistry>();
+builder.Services.AddSingleton<SubnetZoneTorrentAccessPolicy>();
+builder.Services.AddSingleton<RandomPeerTorrentAccessPolicy>();
+builder.Services.AddSingleton<ITorrentAccessPolicy>(sp => sp.GetRequiredService<SubnetZoneTorrentAccessPolicy>());
+builder.Services.AddSingleton<ITorrentAccessPolicy>(sp => sp.GetRequiredService<RandomPeerTorrentAccessPolicy>());
+builder.Services.AddSingleton<ITorrentAccessPolicyRegistry, TorrentAccessPolicyRegistry>();
 builder.Services.AddSingleton<TrackerServer>();
 
 builder.Services.AddSingleton<MonoTorrentSeederService>();
@@ -111,4 +115,3 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
-

@@ -15,6 +15,7 @@ public class TrackerServer
     private CancellationTokenSource? _cancellationTokenSource;
 
     private readonly ITorrentArtifactRegistry _artifactRegistry;
+    private readonly ITorrentAccessPolicyRegistry _torrentAccessPolicyRegistry;
 
     /*
      *  Todo:
@@ -23,10 +24,15 @@ public class TrackerServer
      *  - Add ability to add more logic to which peers are returned (for the actual use-case of this project)
      */
     
-    public TrackerServer(ILogger<TrackerServer> logger, IOptions<TorrentConfig> settings, ITorrentArtifactRegistry artifactRegistry)
+    public TrackerServer(
+        ILogger<TrackerServer> logger,
+        IOptions<TorrentConfig> settings,
+        ITorrentArtifactRegistry artifactRegistry,
+        ITorrentAccessPolicyRegistry torrentAccessPolicyRegistry)
     {
         _logger = logger;
         _artifactRegistry = artifactRegistry;
+        _torrentAccessPolicyRegistry = torrentAccessPolicyRegistry;
         _listeningUri = settings.Value.TrackerUrl;
         _listener = new HttpListener();
         _listener.Prefixes.Add(settings.Value.TrackerBindAddress + settings.Value.AnnounceSuffix);
@@ -48,7 +54,7 @@ public class TrackerServer
             while (_listener.IsListening && !cancellationToken.IsCancellationRequested)
             {
                 var context = await _listener.GetContextAsync();
-                _ = Task.Run(() => ProcessRequest(context), cancellationToken);
+                _ = Task.Run(() => ProcessRequestAsync(context), cancellationToken);
             }
         }
         catch (HttpListenerException ex)
@@ -86,7 +92,7 @@ public class TrackerServer
         }
     }
 
-    private void ProcessRequest(HttpListenerContext context)
+    private async Task ProcessRequestAsync(HttpListenerContext context)
     {
         var request = context.Request;
         var response = context.Response;
@@ -113,7 +119,7 @@ public class TrackerServer
                 _logger.LogInformation("Processing torrent get request for info hash {InfoHash}", request.Url.LocalPath);
                 response.ContentType = "application/x-bittorrent";
                 response.ContentLength64 = artifact.Torrent.TorrentFileBytes.Length;
-                response.OutputStream.Write(artifact.Torrent.TorrentFileBytes, 0, artifact.Torrent.TorrentFileBytes.Length);
+                await response.OutputStream.WriteAsync(artifact.Torrent.TorrentFileBytes);
                 response.Close();
                 return;
             }
@@ -125,7 +131,7 @@ public class TrackerServer
                 return;
             }
             
-            ProcessAnnounceRequest(announceRequest, response);
+            await ProcessAnnounceRequestAsync(announceRequest, response);
         }
         catch (Exception e)
         {
@@ -134,7 +140,7 @@ public class TrackerServer
         }
     }
 
-    private void ProcessAnnounceRequest(AnnounceRequest announceRequest, HttpListenerResponse response)
+    private async Task ProcessAnnounceRequestAsync(AnnounceRequest announceRequest, HttpListenerResponse response)
     {
         var requestingPeer = new Peer(announceRequest.PeerId, new IPEndPoint(announceRequest.RemoteEndPoint.Address, announceRequest.Port), 
             announceRequest.Uploaded, announceRequest.Downloaded, announceRequest.Left);
@@ -168,18 +174,23 @@ public class TrackerServer
         }
         else
         {
-            var peers = torrent.GetPeers(50); // Get up to 50 peers
-            peers.RemoveAll(p => p.PeerId == announceRequest.PeerId); // Don't return the requesting peer
+            var peers = await _torrentAccessPolicyRegistry.GetPeersForAnnounceAsync(new TorrentPeerRequest(
+                announceRequest.InfoHash,
+                requestingPeer,
+                torrent.GetPeers(50),
+                50,
+                null,
+                []));
             
             _logger.LogInformation("[{Peer}] Found {PeerCount} peers for torrent {InfoHash} and peer port {Port}", requestingPeer.PeerId, peers.Count, announceRequest.InfoHash, requestingPeer.EndPoint.Port);
-            responseDict["peers"] = BuildPeerList(peers, announceRequest.IsCompactRequested);
+            responseDict["peers"] = BuildPeerList(peers.ToList(), announceRequest.IsCompactRequested);
             
         }
 
         var responseBytes = responseDict.Encode();
         response.ContentType = "text/plain";
         response.ContentLength64 = responseBytes.Length;
-        response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
+        await response.OutputStream.WriteAsync(responseBytes);
         response.Close();
     }
 
