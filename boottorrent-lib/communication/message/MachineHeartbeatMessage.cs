@@ -13,4 +13,6 @@ public class MachineHeartbeatMessage : IMqttMessage
     public List<string> LoadedArtifacts { get; set; }
     [Key(2)]
     public Dictionary<string, double> PendingArtifacts { get; set; }
+    [Key(3)]
+    public string ConfigHash { get; set; } = string.Empty;
 }

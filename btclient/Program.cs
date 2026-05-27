@@ -27,9 +27,11 @@ builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"
 builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<ClientMqttService>();
+builder.Services.AddSingleton<ClientMachineConfigurationService>();
 builder.Services.AddSingleton<ArtifactRegistry>();
 builder.Services.AddSingleton<ArtifactUnassignmentHandler>();
 builder.Services.AddSingleton<ArtifactAssignmentHandler>();
+builder.Services.AddSingleton<MachineConfigurationHandler>();
 builder.Services.AddSingleton<MachineReRegisterHandler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ClientMqttService>());
 

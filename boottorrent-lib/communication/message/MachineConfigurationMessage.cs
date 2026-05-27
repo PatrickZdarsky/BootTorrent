@@ -9,6 +9,6 @@ namespace boottorrent_lib.communication.message;
 public class MachineConfigurationMessage : IMqttMessage
 {
     public static readonly string MessageType = "machine_configuration";
-    
-    public MachineConfiguration Configuration { get; set; }
+
+    public MachineConfiguration Configuration { get; set; } = new();
 }

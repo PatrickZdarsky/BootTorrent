@@ -24,12 +24,13 @@ public class MachineRegistry : IHostedService, IDisposable
     public MachineRegistry(
         ILogger<MachineRegistry> logger,
         ServerMqttService mqttService,
+        MachineConfigurationService machineConfigurationService,
         IOptions<MachineRegistryConfig> settings)
     {
         _logger = logger;
         _heartbeatTimeout = TimeSpan.FromSeconds(Math.Max(1, settings.Value.HeartbeatTimeoutSeconds));
         _heartbeatCheckInterval = TimeSpan.FromSeconds(Math.Max(1, settings.Value.HeartbeatCheckIntervalSeconds));
-        RegisterHandlers(mqttService);
+        RegisterHandlers(mqttService, machineConfigurationService);
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -61,9 +62,9 @@ public class MachineRegistry : IHostedService, IDisposable
         _monitorCancellationTokenSource.Dispose();
     }
 
-    private void RegisterHandlers(ServerMqttService mqttService)
+    private void RegisterHandlers(ServerMqttService mqttService, MachineConfigurationService machineConfigurationService)
     {
-        mqttService.AddHandler<MachineStartedMessage>(MachineStartedMessage.MessageType, (context, message) =>
+        mqttService.AddHandler<MachineStartedMessage>(MachineStartedMessage.MessageType, async (context, message) =>
         {
             var machineId = context.TargetId!;
             var isNewMachine = false;
@@ -79,6 +80,7 @@ public class MachineRegistry : IHostedService, IDisposable
                     existingMachine.LastSeen = DateTime.UtcNow;
                     existingMachine.LoadedArtifacts = [];
                     existingMachine.PendingArtifacts = [];
+                    existingMachine.ReportedConfigHash = string.Empty;
                     return existingMachine;
                 });
 
@@ -87,7 +89,8 @@ public class MachineRegistry : IHostedService, IDisposable
             {
                 OnMachineStarted(machine);
             }
-            return Task.CompletedTask;
+
+            await machineConfigurationService.EnsureConfigurationAsync(machine);
         });
 
         mqttService.AddHandler<MachineStoppedMessage>(MachineStoppedMessage.MessageType, (context, _) =>
@@ -113,7 +116,13 @@ public class MachineRegistry : IHostedService, IDisposable
             machine.LastSeen = DateTime.UtcNow;
             machine.LoadedArtifacts = message.LoadedArtifacts;
             machine.PendingArtifacts = message.PendingArtifacts;
+            machine.ReportedConfigHash = message.ConfigHash;
             _logger.LogTrace("Received heartbeat for machine {MachineId}.", machineId);
+
+            if (!string.Equals(machine.ReportedConfigHash, machine.DesiredConfigHash, StringComparison.Ordinal))
+            {
+                await machineConfigurationService.EnsureConfigurationAsync(machine);
+            }
         });
     }
 

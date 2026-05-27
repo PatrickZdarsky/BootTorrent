@@ -1,8 +1,11 @@
 ﻿using System.Text.Json.Serialization;
+using boottorrent_lib.client;
 using boottorrent_lib.communication.message;
 
 namespace boottorrent_lib.communication.codec;
 
+[JsonSerializable(typeof(MachineConfiguration))]
+[JsonSerializable(typeof(MachineConfigurationMessage))]
 [JsonSerializable(typeof(MachineStartedMessage))]
 [JsonSerializable(typeof(MachineStoppedMessage))]
 [JsonSerializable(typeof(MachineHeartbeatMessage))]

@@ -1,6 +1,7 @@
 using btserver.Controllers.Dto;
 using btserver.Controllers.Mapping;
 using btserver.Data;
+using btserver.Swarm;
 using btserver.Zone;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,10 @@ namespace btserver.Controllers;
 [ApiController]
 [Route("api/v1/zones")]
 [SwaggerTag("Provides operations for managing zones.")]
-public class ZoneController(BtDbContext dbContext) : ControllerBase
+public class ZoneController(
+    BtDbContext dbContext,
+    MachineRegistry machineRegistry,
+    MachineConfigurationService machineConfigurationService) : ControllerBase
 {
     [HttpGet]
     [SwaggerOperation(Summary = "Retrieves all zones.")]
@@ -52,6 +56,7 @@ public class ZoneController(BtDbContext dbContext) : ControllerBase
 
         dbContext.Zones.Add(zone);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
 
         var dto = zone.ToDto();
         return CreatedAtAction(nameof(GetZone), new { id = zone.Id }, dto);
@@ -95,6 +100,7 @@ public class ZoneController(BtDbContext dbContext) : ControllerBase
         existingZone.Name = updatedZone.Name;
         existingZone.AssignedArtifactIds = updatedZone.AssignedArtifactIds;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
 
         return Ok(existingZone.ToDto());
     }
@@ -123,6 +129,7 @@ public class ZoneController(BtDbContext dbContext) : ControllerBase
 
         dbContext.Zones.Remove(zone);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
         return NoContent();
     }
 

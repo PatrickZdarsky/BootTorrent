@@ -38,7 +38,6 @@ public class ClientMqttService : MqttMessageService
         MqttClient.ApplicationMessageReceivedAsync += HandleMessageReceivedAsync;
         await MqttClient.SubscribeAsync("boottorrent/cmd/global/#", MqttQualityOfServiceLevel.AtLeastOnce);
         await MqttClient.SubscribeAsync($"boottorrent/cmd/machine/{ClientSettings.ClientIdentifier}/#", MqttQualityOfServiceLevel.AtLeastOnce);
-        // await MqttClient.SubscribeAsync($"boottorrent/cmd/zone/{ZONE}", MqttQualityOfServiceLevel.AtLeastOnce);
         
         // Fire the event after the connection is fully set up
         //Todo: We might wanna check if this is a reconnect or not
@@ -56,5 +55,25 @@ public class ClientMqttService : MqttMessageService
     public MqttTopicContext EventFromMachine(string messageType)
     {
         return MqttTopicContext.CreateEventFromMachine(ClientSettings.ClientIdentifier, messageType);
+    }
+
+    public async Task SubscribeToZoneAsync(string zoneId, CancellationToken cancellationToken = default)
+    {
+        if (!MqttClient.IsConnected)
+        {
+            return;
+        }
+
+        await MqttClient.SubscribeAsync($"boottorrent/cmd/zone/{zoneId}/#", MqttQualityOfServiceLevel.AtLeastOnce, cancellationToken);
+    }
+
+    public async Task UnsubscribeFromZoneAsync(string zoneId, CancellationToken cancellationToken = default)
+    {
+        if (!MqttClient.IsConnected)
+        {
+            return;
+        }
+
+        await MqttClient.UnsubscribeAsync($"boottorrent/cmd/zone/{zoneId}/#", cancellationToken);
     }
 }

@@ -64,6 +64,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerMqttService>
 
 
 builder.Services.AddSingleton<MachineRegistry>();
+builder.Services.AddSingleton<MachineConfigurationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MachineRegistry>());
 //Torrent / Artifact Management
 builder.Services.AddSingleton<ITorrentCreator, MonoTorrentCreator>();

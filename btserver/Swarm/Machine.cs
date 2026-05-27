@@ -12,4 +12,7 @@ public class Machine(string id, string ipAddress)
     public DateTime LastSeen { get; set; } = DateTime.UtcNow;
     public List<string> LoadedArtifacts { get; set; } = [];
     public Dictionary<string, double> PendingArtifacts { get; set; } = [];
+    public string ReportedConfigHash { get; set; } = string.Empty;
+    public string DesiredConfigHash { get; set; } = string.Empty;
+    public List<string> AssignedZones { get; set; } = [];
 }
