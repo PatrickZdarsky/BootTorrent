@@ -3,6 +3,7 @@
   "profiles": {
     "btserver": {
       "commandName": "Project",
+      "applicationUrl": "https://localhost:7127;http://localhost:5127",
       "dotnetRunMessages": true,
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
