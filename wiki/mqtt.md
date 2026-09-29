@@ -1,7 +1,7 @@
-﻿# BootTorrent MQTT Topic Plan
+# BootTorrent MQTT topics
 
 ## Encoding
-All MQTT messages are encoded using [MessagePack](https://msgpack.org/) for efficiency.
+The current server and client entry points register `JsonMessageCodec`; current commands and events use JSON. A `MessagePackCodec` class exists in the library but is not selected by those entry points.
 
 ---
 
@@ -33,17 +33,8 @@ Used by the server to send commands to a specific machine.
 `boottorrent/evt/machine/{machineId}/{messageType}`
 Used by a machine to report events or feedback to the server. `messageType` defines the kind of feedback.
 
-##### Example Message Types:
-- `status` – Periodic status or heartbeat
-- `download` – Torrent download progress or completion
-- `boot` – Boot state notifications
-- `error` – Errors encountered by the client
-- `info` – Optional logs or diagnostic info
+Current machine events include `startup`, `shutdown` and `heartbeat`. A run-tagged SHA-256 verified result and reset acknowledgement are planned for the evaluation; they are not present in the current message contract. `messageType` is the actual message type key, not the illustrative labels from an earlier topic proposal.
 
 ---
 
-## Benefits of this Structure
-- Clear directionality (commands vs. feedback)
-- Easy topic filtering (e.g., `boottorrent/evt/#`)
-- Scalable for additional types of events or devices
-- Clean separation of concerns,
+The existing machine-scoped command topic can target only the selected clients in an RQ1 run. The zone-scoped assignment command is paired with persisted server-side zone assignment state; later reconciliation for an offline client must use that state after the client reconnects and subscribes.

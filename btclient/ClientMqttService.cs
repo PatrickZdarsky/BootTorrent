@@ -1,7 +1,7 @@
 ﻿using boottorrent_lib.communication;
 using boottorrent_lib.communication.message;
 using Microsoft.Extensions.Options;
-using MQTTnet.Client;
+using MQTTnet;
 using MQTTnet.Protocol;
 
 namespace btclient;

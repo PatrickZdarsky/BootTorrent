@@ -1,4 +1,5 @@
-﻿using MQTTnet.Client;
+﻿using MQTTnet;
+using MQTTnet.Formatter;
 
 namespace boottorrent_lib.communication;
 
@@ -9,7 +10,8 @@ public static class MqttOptionsFactory
         var builder = new MqttClientOptionsBuilder()
             .WithClientId(settings.ClientId)
             .WithTcpServer(settings.Server, settings.Port)
-            .WithCleanSession(settings.CleanSession);
+            .WithCleanSession(settings.CleanSession)
+            .WithProtocolVersion(MqttProtocolVersion.V311);
 
         if (!string.IsNullOrEmpty(settings.Username))
         {
@@ -18,7 +20,7 @@ public static class MqttOptionsFactory
 
         if (settings.UseTls)
         {
-            builder = builder.WithTls();
+            builder = builder.WithTlsOptions(o => o.UseTls());
         }
 
         return builder.Build();

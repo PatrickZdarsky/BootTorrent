@@ -1,207 +1,56 @@
 # BootTorrent
 
-BootTorrent is a distributed artifact distribution and fleet coordination system designed for large-scale computer environments. It combines centrally managed orchestration with controlled peer-to-peer distribution using BitTorrent technology to efficiently distribute large artifacts across network zones.
+BootTorrent is a prototype for centrally managed artifact distribution with BitTorrent data transfer. Its motivating setting is a school with many computer labs: a typical room has about 36 PCs, and two larger rooms have up to about 80. Each PC has a 1 Gbit/s switch connection, while a lab commonly shares a 2 × 10 Gbit/s LACP uplink. The switch fabric can carry much more local traffic than that uplink. Distributing pieces among PCs in the room could use this local capacity and reduce repeated transfers from the central server.
 
-The project focuses on reducing central infrastructure load while maintaining centralized control over distribution policies, topology awareness, and client coordination.
+The project distinguishes **control traffic** from **artifact payload**. The server assigns artifacts, tracks machines and zones, and decides which peers a client may discover. Clients transfer the artifact using BitTorrent. The goal is to measure completion time and where the payload bytes travel; lower server traffic does not imply lower total network traffic or faster completion.
 
-## Overview
+## Intended zone distribution
 
-BootTorrent currently consists of three main components:
+A **zone** represents machines that should exchange artifact data locally. In the motivating deployment, a computer lab generally has its own VLAN on its room switch. A multi-switch large room uses high-throughput stacking links. The current zone-aware tracker policy operates on subnet zones; the intended physical meaning and the actual network path must be recorded for each deployment.
 
-- **btserver** – Central coordination server responsible for orchestration, assignments, topology management, and monitoring
-- **btclient** – Client agent running on managed machines that receives assignments, participates in torrent distribution, and reports status
-- **boottorrent-lib** – Shared library containing communication contracts, messaging infrastructure, and transport logic
+When an artifact is assigned to a zone, the server designates a configurable small number of its clients as **proxies**. A proxy is a normal `btclient` instance with permission to obtain artifact payload directly from the central seeder. It is neither a separate gateway program nor the only uploader in the zone. Proxies and ordinary clients should all exchange pieces with available peers in their zone, including ordinary-client-to-ordinary-client transfers.
 
-## Features
+**Ordinary clients must never receive artifact payload from the central seeder in zone-aware mode.** If a selected proxy is unavailable, clients should use other zone peers that already have the needed pieces. If there is no viable proxy and no client in the zone holds a complete copy, management must designate another available client as a proxy before more source data is fetched. If a complete copy is already available and seeding in the zone, a newly available client can obtain the entire artifact locally, with zero central-server **payload** traffic for that client's download. This depends on that peer remaining available and discoverable; tracker, assignment, and status traffic may still contact central services.
 
-- Distributed artifact distribution using BitTorrent
-- Custom tracker implementation
-- Embedded MonoTorrent client integration
-- MQTT-based command and control communication
-- Zone-aware distribution topology
-- Dynamic artifact assignments
-- Real-time client monitoring and heartbeat tracking
-- Strongly typed messaging contracts
-- PostgreSQL-backed configuration management
-- Docker support
-- Kubernetes deployment support via Helm
+The main policy parameter is the number of proxies per zone. Selection could later use machine load or observed uptime; rotating proxies on a fixed short timer is not a design requirement. Transfers between zones are outside the primary zone-local design. They could be studied as a separate policy when reducing central-server load matters more than keeping payload within each zone.
 
-## Architecture
+See [the architecture note](wiki/architecture.md) for the intended assignment and recovery sequence.
 
-BootTorrent follows a modular distributed architecture consisting of:
+## Components and communication
 
-- A central coordination layer
-- A messaging and event system
-- A torrent-based transport layer
-- Distributed clients participating in artifact propagation
+| Project | Responsibility |
+| --- | --- |
+| `btserver` | Artifact registration, zone assignments, machine state, REST management endpoints, custom tracker, and central MonoTorrent seeder |
+| `btclient` | MQTT agent, assignment handling, local MonoTorrent transfer, and status reporting |
+| `boottorrent-lib` | Shared artifact, torrent-job, and messaging types |
 
-### Communication Model
+MQTT carries commands from server to clients on `boottorrent/cmd/global/{messageType}`, `boottorrent/cmd/zone/{zoneId}/{messageType}`, and `boottorrent/cmd/machine/{machineId}/{messageType}`. Clients report events on `boottorrent/evt/machine/{machineId}/{messageType}`. The current applications register JSON message codecs. Torrent metadata and tracker announces use HTTP; artifact pieces use BitTorrent peer connections. See [the MQTT topic plan](wiki/mqtt.md) for topic details.
 
-BootTorrent uses MQTT for orchestration and status communication.
+## Current implementation status
 
-### Topic Structure
+The checkout contains .NET 10 server, client, and shared-library projects; a custom tracker; MonoTorrent integration; MQTT registration, assignments, and heartbeats; SQLite and Entity Framework migrations; and REST controllers for artifacts, machines, zones, and policy configuration. Docker and Helm files are present. These code paths have **not** been established here as a working end-to-end deployment or benchmark.
 
-**Commands (Server → Clients)**
+Several behaviors still differ from the intended zone design:
 
-- `boottorrent/cmd/global/{messageType}` – Broadcast commands
-- `boottorrent/cmd/zone/{zoneId}/{messageType}` – Zone-targeted commands
-- `boottorrent/cmd/machine/{machineId}/{messageType}` – Machine-specific commands
+- The current subnet-zone tracker policy is coded to return central-seeder peers to designated proxies and only proxy peers to ordinary clients. It does not yet return all eligible ordinary peers within the zone. When it finds no announced proxy peer, it tries to return central-seeder peers to an ordinary client. That fallback violates the rule above and must be removed or replaced with proxy reassignment while preserving local peer access. Seeder registration is currently missing, so these responses may be empty in practice.
+- Proxy IDs can be configured, and the policy fills vacant proxy slots from active zone machines. Selection currently follows machine-ID order; it does not use load or uptime. Availability of a complete zone copy is not yet used to decide whether a replacement proxy needs central access.
+- Zone artifact assignments are published as MQTT commands. The current startup path does not reconcile every artifact assigned to a zone for a machine that was offline when the assignment was published. Late-join behavior therefore needs implementation and verification.
+- Central-seeder registration, verified client completion, and observed payload paths need end-to-end checking before source-traffic or locality claims can be made. Tracker peer lists are discovery decisions, not measurements of transferred bytes.
 
-**Events (Clients → Server)**
+The lower-priority `random-fallback` tracker policy is an unrestricted peer-selection policy for requests that the subnet-zone policy does not handle. It is not a recovery path that should grant ordinary zone clients central-seeder access.
 
-- `boottorrent/evt/machine/{machineId}/{messageType}` – Status updates, heartbeats, and events
+## Build and configuration
 
-Messages are serialized using MessagePack or JSON.
-
-For more details, see [MQTT Topic Plan](wiki/mqtt.md).
-
-## Current State
-
-Implemented functionality includes:
-
-- Fully custom BitTorrent tracker implementation
-- Functional torrent distribution using MonoTorrent clients and seeders
-- Artifact assignment handling on clients
-- Initial PostgreSQL integration for persistent configuration and zone management
-- Continuous client monitoring and status tracking
-- Typed event-driven messaging infrastructure
-
-Planned functionality includes:
-
-- Policy enforcement for controlled proxy downloads
-- Topology-aware intra-zone distribution optimization
-- REST API for configuration and orchestration
-- Extended management functionality for artifacts, clients, and assignments
-- Performance evaluation and benchmarking
-
-## Technology Stack
-
-- .NET 10
-- MQTT
-- MonoTorrent
-- PostgreSQL
-- Docker
-- Kubernetes + Helm
-
-## Prerequisites
-
-- .NET 10 SDK or later
-- MQTT broker (e.g. Mosquitto)
-- PostgreSQL
-- Docker (optional)
-
-## Installation
-
-### Clone Repository
+The solution targets .NET 10. A local build requires the .NET 10 SDK and restored dependencies:
 
 ```bash
-git clone https://github.com/PatrickZdarsky/BootTorrent.git
-cd BootTorrent
+dotnet build BootTorrent.sln
 ```
 
-### Build
+Running the applications also requires an MQTT broker. The server uses the `ConnectionStrings:DefaultConnection` setting for SQLite. Server MQTT and torrent settings are under `Mqtt` and `Torrent`; the client uses `Mqtt` and `Client`. The development settings files contain machine-specific paths and loopback addresses, so replace them with paths, broker details, and a tracker URL reachable by the clients. Give every client a unique `Client:ClientIdentifier` and MQTT `Mqtt:ClientId`.
 
-```bash
-dotnet build
-```
+The client project enables Native AOT publishing. Docker and Helm assets are available in the repository, but their deployment behavior is not verified by this README.
 
-### Run Tests
+## Thesis workspace
 
-```bash
-dotnet test
-```
-
-## Configuration
-
-### Server Configuration
-
-Edit `btserver/appsettings.json`:
-
-```json
-{
-  "Mqtt": {
-    "ClientId": "btserver",
-    "Server": "mqtt-broker-address",
-    "Port": 1883,
-    "UseTLS": false,
-    "Username": "",
-    "Password": ""
-  },
-  "Postgres": {
-    "ConnectionString": "Host=localhost;Database=boottorrent;"
-  }
-}
-```
-
-### Client Configuration
-
-Edit `btclient/appsettings.json`:
-
-```json
-{
-  "Client": {
-    "ClientIdentifier": "unique-machine-id"
-  },
-  "Mqtt": {
-    "ClientId": "btclient-{id}",
-    "Server": "mqtt-broker-address",
-    "Port": 1883,
-    "UseTLS": false,
-    "Username": "",
-    "Password": ""
-  }
-}
-```
-
-
-## Project Structure
-
-```text
-BootTorrent/
-├── boottorrent-lib/      # Shared library
-│   ├── client/           # Client and zone models
-│   ├── communication/    # MQTT messaging layer
-├── btserver/             # Central coordination server
-├── btclient/             # Client runtime
-├── helm/                 # Kubernetes Helm charts
-└── wiki/                 # Documentation
-```
-
-## Native AOT
-
-Both server and client support Native AOT compilation.
-
-```bash
-dotnet publish -c Release -r linux-x64
-```
-
-## Logging
-
-Logs are written to:
-
-- Console output
-- `logs/log.txt`
-
-Log levels can be configured in `appsettings.json`.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push the branch
-5. Open a Pull Request
-
-## Known Issues
-
-- Some Native AOT warnings related to configuration binding
-- REST management API not yet implemented
-- Proxy policy enforcement still missing
-
-## License
-
-See repository license information.
-
-## Support
-
-Please use the GitHub issue tracker for bug reports, discussions, and feature requests.
+The parent workspace contains the current [project knowledge](../Project-Knowledge.md), [research questions](../Research-Questions.md), and [evaluation setup](../Evaluation-Setup.md). Those working documents distinguish intended behavior from code review findings and measured results.

@@ -1,6 +1,6 @@
 ﻿using boottorrent_lib.communication;
 using Microsoft.Extensions.Options;
-using MQTTnet.Client;
+using MQTTnet;
 using MQTTnet.Protocol;
 
 namespace btserver;

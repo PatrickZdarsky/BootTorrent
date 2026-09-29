@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MQTTnet;
-using MQTTnet.Client;
 
 namespace boottorrent_lib.communication;
 
@@ -16,7 +15,7 @@ public abstract class MqttClientService : BackgroundService
     {
         _options = options;
         _logger = logger;
-        MqttClient = new MqttFactory().CreateMqttClient();
+        MqttClient = new MqttClientFactory().CreateMqttClient();
         MqttClient.ConnectedAsync += HandleConnectedAsync;
         MqttClient.DisconnectedAsync += HandleDisconnectedAsync;
     }

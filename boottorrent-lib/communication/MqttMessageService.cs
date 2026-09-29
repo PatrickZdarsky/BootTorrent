@@ -1,6 +1,6 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Buffers;
+using Microsoft.Extensions.Logging;
 using MQTTnet;
-using MQTTnet.Client;
 using MQTTnet.Protocol;
 
 namespace boottorrent_lib.communication;
@@ -17,7 +17,7 @@ public abstract class MqttMessageService(
         try
         {
             await dispatcher.DispatchAsync(eventArgs.ApplicationMessage.Topic,
-                eventArgs.ApplicationMessage.PayloadSegment);
+                eventArgs.ApplicationMessage.Payload.ToArray());
         } catch (Exception ex)
         {
             _logger.LogError(ex, "Error while handling MQTT message");
