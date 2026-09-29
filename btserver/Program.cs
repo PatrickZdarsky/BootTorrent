@@ -3,8 +3,8 @@ using boottorrent_lib.communication.codec;
 using btserver;
 using btserver.Config;
 using btserver.Data;
-using btserver.handler;
 using btserver.Swarm;
+using btserver.Zone;
 using btserver.torrent;
 using btserver.torrent.impl;
 using btserver.torrent.monotorrent;
@@ -56,7 +56,6 @@ builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
 //     .AsImplementedInterfaces()
 //     .WithSingletonLifetime());
 builder.Services.AddTransient<Lazy<ServerMqttService>>(provider => new Lazy<ServerMqttService>(provider.GetService<ServerMqttService>));
-builder.Services.AddSingleton<MachineStartedHandler>();
 
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<ServerMqttService>();
@@ -64,7 +63,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerMqttService>
 
 
 builder.Services.AddSingleton<MachineRegistry>();
+builder.Services.AddSingleton<ZoneManager>();
 builder.Services.AddSingleton<MachineConfigurationService>();
+builder.Services.AddSingleton<IMachineRegistryObserver>(sp => sp.GetRequiredService<MachineConfigurationService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MachineRegistry>());
 //Torrent / Artifact Management
 builder.Services.AddSingleton<ITorrentCreator, MonoTorrentCreator>();

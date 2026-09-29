@@ -7,7 +7,7 @@
 public class Machine(string id, string ipAddress)
 {
     public string Id { get; } = id;
-    public string IpAddress { get; } = ipAddress;
+    public string IpAddress { get; set; } = ipAddress;
     
     public DateTime LastSeen { get; set; } = DateTime.UtcNow;
     public List<string> LoadedArtifacts { get; set; } = [];

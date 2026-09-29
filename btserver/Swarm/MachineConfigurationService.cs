@@ -1,53 +1,45 @@
 using boottorrent_lib.client;
 using boottorrent_lib.communication;
 using boottorrent_lib.communication.message;
-using btserver.Data;
-using Microsoft.EntityFrameworkCore;
+using btserver.Zone;
 
 namespace btserver.Swarm;
 
 public class MachineConfigurationService(
     ILogger<MachineConfigurationService> logger,
-    IServiceScopeFactory serviceScopeFactory,
-    Lazy<ServerMqttService> mqttService)
+    ZoneManager zoneManager,
+    Lazy<ServerMqttService> mqttService) : IMachineRegistryObserver
 {
+    public Task OnMachineRegisteredAsync(Machine machine) => EnsureConfigurationAsync(machine);
+
+    public Task OnMachineHeartbeatAsync(Machine machine)
+    {
+        return string.Equals(machine.ReportedConfigHash, machine.DesiredConfigHash, StringComparison.Ordinal)
+            ? Task.CompletedTask
+            : EnsureConfigurationAsync(machine);
+    }
+
     public async Task EnsureConfigurationAsync(Machine machine, CancellationToken cancellationToken = default)
     {
-        using var scope = serviceScopeFactory.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<BtDbContext>();
-        var zones = await dbContext.Zones
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
-
-        await EnsureConfigurationAsync(machine, zones, cancellationToken);
+        var assignedZoneIds = await zoneManager.GetAssignedZoneIdsAsync(machine, cancellationToken);
+        await EnsureConfigurationAsync(machine, assignedZoneIds, cancellationToken);
     }
 
     public async Task EnsureConfigurationsAsync(IEnumerable<Machine> machines, CancellationToken cancellationToken = default)
     {
-        var machineList = machines.ToList();
-        if (machineList.Count == 0)
+        var memberships = await zoneManager.GetAssignedZoneIdsAsync(machines, cancellationToken);
+        foreach (var (machine, assignedZoneIds) in memberships)
         {
-            return;
-        }
-
-        using var scope = serviceScopeFactory.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<BtDbContext>();
-        var zones = await dbContext.Zones
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
-
-        foreach (var machine in machineList)
-        {
-            await EnsureConfigurationAsync(machine, zones, cancellationToken);
+            await EnsureConfigurationAsync(machine, assignedZoneIds, cancellationToken);
         }
     }
 
     private async Task EnsureConfigurationAsync(
         Machine machine,
-        IReadOnlyCollection<Zone.Zone> zones,
+        IEnumerable<string> assignedZoneIds,
         CancellationToken cancellationToken)
     {
-        var configuration = BuildConfiguration(machine, zones);
+        var configuration = MachineConfiguration.Create(assignedZoneIds);
         machine.AssignedZones = configuration.AssignedZones;
         machine.DesiredConfigHash = configuration.ConfigHash;
 
@@ -63,21 +55,9 @@ public class MachineConfigurationService(
             machine.ReportedConfigHash,
             configuration.AssignedZones);
 
+        cancellationToken.ThrowIfCancellationRequested();
         await mqttService.Value.PublishAsync(
-            new MachineConfigurationMessage
-            {
-                Configuration = configuration
-            },
+            new MachineConfigurationMessage { Configuration = configuration },
             MqttTopicContext.CreateCommandForMachine(machine.Id, MachineConfigurationMessage.MessageType));
-    }
-
-    private static MachineConfiguration BuildConfiguration(Machine machine, IEnumerable<Zone.Zone> zones)
-    {
-        var assignedZones = zones
-            .Where(zone => zone.Contains(machine))
-            .Select(zone => zone.Id.ToString())
-            .ToList();
-
-        return MachineConfiguration.Create(assignedZones);
     }
 }

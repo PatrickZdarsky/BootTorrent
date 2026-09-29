@@ -10,6 +10,7 @@ namespace btserver.Swarm;
 public class MachineRegistry : IHostedService, IDisposable
 {
     private readonly ILogger<MachineRegistry> _logger;
+    private readonly IEnumerable<IMachineRegistryObserver> _observers;
     private readonly TimeSpan _heartbeatTimeout;
     private readonly TimeSpan _heartbeatCheckInterval;
     private readonly CancellationTokenSource _monitorCancellationTokenSource = new();
@@ -24,13 +25,14 @@ public class MachineRegistry : IHostedService, IDisposable
     public MachineRegistry(
         ILogger<MachineRegistry> logger,
         ServerMqttService mqttService,
-        MachineConfigurationService machineConfigurationService,
+        IEnumerable<IMachineRegistryObserver> observers,
         IOptions<MachineRegistryConfig> settings)
     {
         _logger = logger;
+        _observers = observers;
         _heartbeatTimeout = TimeSpan.FromSeconds(Math.Max(1, settings.Value.HeartbeatTimeoutSeconds));
         _heartbeatCheckInterval = TimeSpan.FromSeconds(Math.Max(1, settings.Value.HeartbeatCheckIntervalSeconds));
-        RegisterHandlers(mqttService, machineConfigurationService);
+        RegisterHandlers(mqttService);
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -62,7 +64,7 @@ public class MachineRegistry : IHostedService, IDisposable
         _monitorCancellationTokenSource.Dispose();
     }
 
-    private void RegisterHandlers(ServerMqttService mqttService, MachineConfigurationService machineConfigurationService)
+    private void RegisterHandlers(ServerMqttService mqttService)
     {
         mqttService.AddHandler<MachineStartedMessage>(MachineStartedMessage.MessageType, async (context, message) =>
         {
@@ -77,6 +79,7 @@ public class MachineRegistry : IHostedService, IDisposable
                 },
                 (_, existingMachine) =>
                 {
+                    existingMachine.IpAddress = message.IPAddress;
                     existingMachine.LastSeen = DateTime.UtcNow;
                     existingMachine.LoadedArtifacts = [];
                     existingMachine.PendingArtifacts = [];
@@ -90,7 +93,10 @@ public class MachineRegistry : IHostedService, IDisposable
                 OnMachineStarted(machine);
             }
 
-            await machineConfigurationService.EnsureConfigurationAsync(machine);
+            foreach (var observer in _observers)
+            {
+                await observer.OnMachineRegisteredAsync(machine);
+            }
         });
 
         mqttService.AddHandler<MachineStoppedMessage>(MachineStoppedMessage.MessageType, (context, _) =>
@@ -119,9 +125,9 @@ public class MachineRegistry : IHostedService, IDisposable
             machine.ReportedConfigHash = message.ConfigHash;
             _logger.LogTrace("Received heartbeat for machine {MachineId}.", machineId);
 
-            if (!string.Equals(machine.ReportedConfigHash, machine.DesiredConfigHash, StringComparison.Ordinal))
+            foreach (var observer in _observers)
             {
-                await machineConfigurationService.EnsureConfigurationAsync(machine);
+                await observer.OnMachineHeartbeatAsync(machine);
             }
         });
     }
