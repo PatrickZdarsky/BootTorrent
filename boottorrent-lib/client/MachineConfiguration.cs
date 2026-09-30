@@ -12,26 +12,31 @@ public class MachineConfiguration
 
     public List<string> AssignedZones { get; set; } = [];
 
-    public static MachineConfiguration Create(IEnumerable<string>? assignedZones)
+    public string? DistributionZoneId { get; set; }
+
+    public static MachineConfiguration Create(IEnumerable<string>? assignedZones, string? distributionZoneId = null)
     {
         var normalizedZones = NormalizeZones(assignedZones);
+        var normalizedDistributionZoneId = string.IsNullOrWhiteSpace(distributionZoneId) ? null : distributionZoneId.Trim();
         return new MachineConfiguration
         {
             AssignedZones = normalizedZones,
-            ConfigHash = ComputeHash(normalizedZones)
+            DistributionZoneId = normalizedDistributionZoneId,
+            ConfigHash = ComputeHash(normalizedZones, normalizedDistributionZoneId)
         };
     }
 
     public void Normalize()
     {
         AssignedZones = NormalizeZones(AssignedZones);
-        ConfigHash = ComputeHash(AssignedZones);
+        DistributionZoneId = string.IsNullOrWhiteSpace(DistributionZoneId) ? null : DistributionZoneId.Trim();
+        ConfigHash = ComputeHash(AssignedZones, DistributionZoneId);
     }
 
-    public static string ComputeHash(IEnumerable<string>? assignedZones)
+    public static string ComputeHash(IEnumerable<string>? assignedZones, string? distributionZoneId = null)
     {
         var normalizedZones = NormalizeZones(assignedZones);
-        var payload = Encoding.UTF8.GetBytes(string.Join('\n', normalizedZones));
+        var payload = Encoding.UTF8.GetBytes($"{distributionZoneId?.Trim() ?? string.Empty}\n{string.Join('\n', normalizedZones)}");
         return Convert.ToHexString(SHA256.HashData(payload));
     }
 

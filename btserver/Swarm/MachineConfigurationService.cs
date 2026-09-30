@@ -21,26 +21,33 @@ public class MachineConfigurationService(
 
     public async Task EnsureConfigurationAsync(Machine machine, CancellationToken cancellationToken = default)
     {
-        var assignedZoneIds = await zoneManager.GetAssignedZoneIdsAsync(machine, cancellationToken);
-        await EnsureConfigurationAsync(machine, assignedZoneIds, cancellationToken);
+        var membership = await zoneManager.GetMembershipAsync(machine, cancellationToken);
+        await EnsureConfigurationAsync(machine, membership, cancellationToken);
     }
 
     public async Task EnsureConfigurationsAsync(IEnumerable<Machine> machines, CancellationToken cancellationToken = default)
     {
-        var memberships = await zoneManager.GetAssignedZoneIdsAsync(machines, cancellationToken);
-        foreach (var (machine, assignedZoneIds) in memberships)
+        var memberships = await zoneManager.GetMembershipsAsync(machines, cancellationToken);
+        foreach (var (machine, membership) in memberships)
         {
-            await EnsureConfigurationAsync(machine, assignedZoneIds, cancellationToken);
+            await EnsureConfigurationAsync(machine, membership, cancellationToken);
         }
     }
 
     private async Task EnsureConfigurationAsync(
         Machine machine,
-        IEnumerable<string> assignedZoneIds,
+        ZoneMembership membership,
         CancellationToken cancellationToken)
     {
-        var configuration = MachineConfiguration.Create(assignedZoneIds);
+        if (membership.IsAmbiguous)
+        {
+            logger.LogError("Machine {MachineId} matches multiple distribution zones: {ZoneIds}.", machine.Id, membership.ConflictingDistributionZoneIds);
+        }
+
+        var configuration = MachineConfiguration.Create(membership.ManagementZoneIds, membership.DistributionZoneId);
         machine.AssignedZones = configuration.AssignedZones;
+        machine.DistributionZoneId = configuration.DistributionZoneId;
+        machine.ConflictingDistributionZoneIds = membership.ConflictingDistributionZoneIds;
         machine.DesiredConfigHash = configuration.ConfigHash;
 
         if (string.Equals(machine.ReportedConfigHash, configuration.ConfigHash, StringComparison.Ordinal))
@@ -49,11 +56,12 @@ public class MachineConfigurationService(
         }
 
         logger.LogInformation(
-            "Publishing machine configuration for machine {MachineId}. Desired hash: {ConfigHash}, reported hash: {ReportedHash}, assigned zones: {AssignedZones}.",
+            "Publishing machine configuration for machine {MachineId}. Desired hash: {ConfigHash}, reported hash: {ReportedHash}, assigned zones: {AssignedZones}, distribution zone: {DistributionZoneId}.",
             machine.Id,
             configuration.ConfigHash,
             machine.ReportedConfigHash,
-            configuration.AssignedZones);
+            configuration.AssignedZones,
+            configuration.DistributionZoneId);
 
         cancellationToken.ThrowIfCancellationRequested();
         await mqttService.Value.PublishAsync(

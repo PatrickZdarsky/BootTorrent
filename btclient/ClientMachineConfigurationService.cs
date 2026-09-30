@@ -14,7 +14,7 @@ public class ClientMachineConfigurationService(
 
     public async Task ApplyConfigurationAsync(MachineConfiguration configuration, CancellationToken cancellationToken = default)
     {
-        var normalizedConfiguration = MachineConfiguration.Create(configuration.AssignedZones);
+        var normalizedConfiguration = MachineConfiguration.Create(configuration.AssignedZones, configuration.DistributionZoneId);
 
         await _mutex.WaitAsync(cancellationToken);
         try

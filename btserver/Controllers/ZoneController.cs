@@ -27,7 +27,9 @@ public class ZoneController(
             .OrderBy(zone => zone.Name)
             .ToListAsync(cancellationToken);
 
-        return Ok(zones.Select(zone => zone.ToDto()).ToList());
+        var result = zones.Select(zone => zone.ToDto()).ToList();
+        result.Add(DefaultDistributionZoneDto());
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
@@ -36,6 +38,11 @@ public class ZoneController(
     [SwaggerResponse(StatusCodes.Status404NotFound, "The zone was not found.")]
     public async Task<ActionResult<ZoneDto>> GetZone(Guid id, CancellationToken cancellationToken)
     {
+        if (id == ZoneManager.DefaultDistributionZoneId)
+        {
+            return Ok(DefaultDistributionZoneDto());
+        }
+
         var zone = await dbContext.Zones
             .AsNoTracking()
             .FirstOrDefaultAsync(existingZone => existingZone.Id == id, cancellationToken);
@@ -50,6 +57,12 @@ public class ZoneController(
     public async Task<ActionResult<ZoneDto>> CreateZone([FromBody] UpsertZoneRequestDto request, CancellationToken cancellationToken)
     {
         if (!TryCreateZone(Guid.NewGuid(), request, out var zone, out var validationError))
+        {
+            return ValidationProblem(validationError);
+        }
+
+        validationError = await GetDistributionConflictAsync(zone, cancellationToken);
+        if (validationError is not null)
         {
             return ValidationProblem(validationError);
         }
@@ -82,7 +95,13 @@ public class ZoneController(
             return ValidationProblem("Changing a zone type is not supported.");
         }
 
-        if (!TryCreateZone(id, request, out var updatedZone, out var validationError))
+        if (!TryCreateZone(id, request, out var updatedZone, out var validationError, existingZone.IsDistributionZone))
+        {
+            return ValidationProblem(validationError);
+        }
+
+        validationError = await GetDistributionConflictAsync(updatedZone, cancellationToken);
+        if (validationError is not null)
         {
             return ValidationProblem(validationError);
         }
@@ -98,6 +117,7 @@ public class ZoneController(
         }
 
         existingZone.Name = updatedZone.Name;
+        existingZone.IsDistributionZone = updatedZone.IsDistributionZone;
         existingZone.AssignedArtifactIds = updatedZone.AssignedArtifactIds;
         await dbContext.SaveChangesAsync(cancellationToken);
         await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
@@ -133,7 +153,7 @@ public class ZoneController(
         return NoContent();
     }
 
-    private bool TryCreateZone(Guid id, UpsertZoneRequestDto request, out Zone.Zone zone, out string validationError)
+    private bool TryCreateZone(Guid id, UpsertZoneRequestDto request, out Zone.Zone zone, out string validationError, bool currentDistributionRole = true)
     {
         validationError = string.Empty;
         zone = null!;
@@ -141,6 +161,12 @@ public class ZoneController(
         if (string.IsNullOrWhiteSpace(request.Name))
         {
             validationError = "Zone name is required.";
+            return false;
+        }
+
+        if (id == ZoneManager.DefaultDistributionZoneId)
+        {
+            validationError = "The default distribution zone ID is reserved.";
             return false;
         }
 
@@ -161,6 +187,7 @@ public class ZoneController(
             {
                 Id = id,
                 Name = request.Name.Trim(),
+                IsDistributionZone = request.IsDistributionZone ?? currentDistributionRole,
                 AssignedArtifactIds = assignedArtifactIds,
                 Subnet = request.Subnet.Trim()
             };
@@ -181,6 +208,7 @@ public class ZoneController(
             {
                 Id = id,
                 Name = request.Name.Trim(),
+                IsDistributionZone = request.IsDistributionZone ?? currentDistributionRole,
                 AssignedArtifactIds = assignedArtifactIds,
                 MachineIds = (request.MachineIds ?? [])
                     .Where(machineId => !string.IsNullOrWhiteSpace(machineId))
@@ -200,6 +228,56 @@ public class ZoneController(
         ModelState.AddModelError(nameof(UpsertZoneRequestDto), detail);
         return ValidationProblem(ModelState);
     }
+
+    private async Task<string?> GetDistributionConflictAsync(Zone.Zone candidate, CancellationToken cancellationToken)
+    {
+        if (!candidate.IsDistributionZone)
+        {
+            return null;
+        }
+
+        var others = await dbContext.Zones.AsNoTracking()
+            .Where(zone => zone.Id != candidate.Id && zone.IsDistributionZone)
+            .ToListAsync(cancellationToken);
+
+        foreach (var other in others)
+        {
+            if (candidate is StaticZone candidateStatic && other is StaticZone otherStatic &&
+                candidateStatic.MachineIds.Intersect(otherStatic.MachineIds, StringComparer.Ordinal).Any())
+            {
+                return $"Distribution zone overlaps with '{other.Name}' on a machine ID.";
+            }
+
+            if (candidate is SubnetZone candidateSubnet && other is SubnetZone otherSubnet &&
+                SubnetsOverlap(candidateSubnet, otherSubnet))
+            {
+                return $"Distribution subnet overlaps with '{other.Name}'.";
+            }
+
+            if (machineRegistry.Machines.Values.Any(machine => candidate.Contains(machine) && other.Contains(machine)))
+            {
+                return $"Distribution zone overlaps with '{other.Name}' for an active machine.";
+            }
+        }
+
+        return null;
+    }
+
+    private static bool SubnetsOverlap(SubnetZone left, SubnetZone right)
+    {
+        var leftAddress = left.Subnet.Split('/')[0];
+        var rightAddress = right.Subnet.Split('/')[0];
+        return left.Contains(new boottorrent_lib.client.Machine("subnet-check", rightAddress)) ||
+               right.Contains(new boottorrent_lib.client.Machine("subnet-check", leftAddress));
+    }
+
+    private static ZoneDto DefaultDistributionZoneDto() => new()
+    {
+        Id = ZoneManager.DefaultDistributionZoneId,
+        Type = "default",
+        Name = "Default distribution zone",
+        IsDistributionZone = true
+    };
 
     private static string GetZoneType(Zone.Zone zone)
     {

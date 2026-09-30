@@ -11,6 +11,9 @@ public class UpsertZoneRequestDto
     [SwaggerSchema(Description = "The display name of the zone.")]
     public string Name { get; set; } = string.Empty;
 
+    [SwaggerSchema(Description = "Whether the zone may be used as a distribution boundary. All matching zones remain management memberships.")]
+    public bool? IsDistributionZone { get; set; }
+
     [SwaggerSchema(Description = "Artifacts assigned to machines inside the zone.")]
     public List<string> AssignedArtifactIds { get; set; } = [];
 

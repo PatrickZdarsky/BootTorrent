@@ -14,6 +14,9 @@ namespace btserver.Controllers.Mapping
             {
                 Id = machine.Id,
                 IpAddress = machine.IpAddress,
+                ManagementZoneIds = machine.AssignedZones,
+                DistributionZoneId = machine.DistributionZoneId,
+                ConflictingDistributionZoneIds = machine.ConflictingDistributionZoneIds,
                 LoadedArtifacts = machine.LoadedArtifacts,
                 PendingArtifacts = machine.PendingArtifacts.Select(kv => new PendingArtifactDto
                 {
@@ -32,6 +35,7 @@ namespace btserver.Controllers.Mapping
                     Id = subnetZone.Id,
                     Type = "subnet",
                     Name = subnetZone.Name,
+                    IsDistributionZone = subnetZone.IsDistributionZone,
                     AssignedArtifactIds = subnetZone.AssignedArtifactIds,
                     Subnet = subnetZone.Subnet
                 },
@@ -40,6 +44,7 @@ namespace btserver.Controllers.Mapping
                     Id = staticZone.Id,
                     Type = "static",
                     Name = staticZone.Name,
+                    IsDistributionZone = staticZone.IsDistributionZone,
                     AssignedArtifactIds = staticZone.AssignedArtifactIds,
                     MachineIds = staticZone.MachineIds
                 },

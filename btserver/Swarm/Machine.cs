@@ -15,4 +15,6 @@ public class Machine(string id, string ipAddress)
     public string ReportedConfigHash { get; set; } = string.Empty;
     public string DesiredConfigHash { get; set; } = string.Empty;
     public List<string> AssignedZones { get; set; } = [];
+    public string? DistributionZoneId { get; set; }
+    public List<string> ConflictingDistributionZoneIds { get; set; } = [];
 }

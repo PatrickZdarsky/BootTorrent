@@ -14,6 +14,9 @@ public class ZoneDto
     [SwaggerSchema(Description = "The display name of the zone.")]
     public string Name { get; set; } = string.Empty;
 
+    [SwaggerSchema(Description = "Whether this zone may be used as a distribution boundary.")]
+    public bool IsDistributionZone { get; set; }
+
     [SwaggerSchema(Description = "Artifacts assigned to machines inside the zone.")]
     public List<string> AssignedArtifactIds { get; set; } = [];
 

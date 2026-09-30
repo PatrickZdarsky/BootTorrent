@@ -14,6 +14,9 @@ public abstract class Zone
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     public Guid Id { get; set; }
     public required string Name { get; set; }
+
+    /// <summary>Whether this zone can determine a machine's torrent distribution boundary.</summary>
+    public bool IsDistributionZone { get; set; } = true;
     
     [NotMapped]
     public List<string> AssignedArtifactIds { get; set; } = [];
