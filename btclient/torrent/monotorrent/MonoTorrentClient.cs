@@ -6,7 +6,9 @@ using MonoTorrent.Connections;
 
 namespace btclient.torrent.monotorrent;
 
-public class MonoTorrentClient(ILogger<MonoTorrentClient> logger) : ITorrentClient
+public class MonoTorrentClient(
+    ILogger<MonoTorrentClient> logger,
+    OriginPeerConnectionPolicy originPolicy) : ITorrentClient, IOriginPeerConnectionController
 {
     public ClientEngine? engine;
 
@@ -69,7 +71,24 @@ public class MonoTorrentClient(ILogger<MonoTorrentClient> logger) : ITorrentClie
         }.ToSettings();
 
         engine = new ClientEngine(settings);
+        engine.ConnectionManager.BanPeer += (_, args) =>
+        {
+            if (!originPolicy.ShouldReject(args.Peer.ConnectionUri)) return;
+            args.BanPeer = true;
+            logger.LogInformation("Rejected central seeder connection to {PeerEndpoint}; machine is not a proxy.",
+                args.Peer.ConnectionUri);
+        };
         logger.LogInformation("MonoTorrent engine started");
+    }
+
+    public async Task ResetConnectionsAsync()
+    {
+        if (engine is null) return;
+        foreach (var manager in engine.Torrents.ToList())
+        {
+            await manager.StopAsync();
+            await manager.StartAsync();
+        }
     }
 
     public async Task StopAsync()

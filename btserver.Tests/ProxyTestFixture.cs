@@ -2,10 +2,12 @@ using boottorrent_lib.client;
 using btserver.Data;
 using btserver.Swarm;
 using btserver.Zone;
+using btserver.Config;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace btserver.Tests;
 
@@ -43,7 +45,8 @@ internal sealed class ProxyTestFixture : IDisposable
     public MachineConfigurationService CreateConfigurationService() => new(
         NullLogger<MachineConfigurationService>.Instance, Zones,
         _services.GetRequiredService<IServiceScopeFactory>(),
-        new Lazy<ServerMqttService>(() => throw new InvalidOperationException("Unexpected MQTT publication.")));
+        new Lazy<ServerMqttService>(() => throw new InvalidOperationException("Unexpected MQTT publication.")),
+        Options.Create(new TorrentConfig { TrackerUrl = string.Empty }));
 
     public ProxyElectionService CreateFreshElectionService() => new(
         _services.GetRequiredService<IServiceScopeFactory>(), Machines,

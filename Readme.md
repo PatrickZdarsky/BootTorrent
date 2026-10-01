@@ -42,7 +42,7 @@ Proxy APIs:
 - `GET/PUT /api/v1/policies/zones/{zoneId}/artifacts/{artifactId}/proxies`: inspect or explicitly designate the online proxy machines for an artifact.
 - `GET /api/v1/policies/zones/{zoneId}/artifacts/{artifactId}/proxy-transitions`: recent election changes.
 
-End-to-end transfer and payload-path verification is still required. Tracker filtering and disabled DHT, peer exchange, and local discovery limit discovery, but the central MonoTorrent seeder does not authenticate incoming peers against the election state. A client that learns its endpoint by another means may connect directly; enforce origin admission at the seeder or network boundary before treating the origin-access rule as a security guarantee.
+End-to-end transfer and payload-path verification is still required. Tracker filtering and disabled DHT, peer exchange, and local discovery limit discovery. The official client also rejects outbound connections to the central seeder when it has no proxy designation. This client-side check is machine-wide; the tracker still decides origin access per artifact. The central MonoTorrent seeder does not authenticate incoming peers against the election state, so this is a lab behavior rule rather than a security guarantee.
 
 ## Build and configuration
 
@@ -55,6 +55,21 @@ dotnet build BootTorrent.sln
 Running the applications also requires an MQTT broker. The server uses the `ConnectionStrings:DefaultConnection` setting for SQLite. Server MQTT and torrent settings are under `Mqtt` and `Torrent`; the client uses `Mqtt` and `Client`. The development settings files contain machine-specific paths and loopback addresses, so replace them with paths, broker details, and a tracker URL reachable by the clients. Give every client a unique `Client:ClientIdentifier` and MQTT `Mqtt:ClientId`.
 
 The client project enables Native AOT publishing. Docker and Helm assets are available in the repository, but their deployment behavior is not verified by this README.
+
+### Windows client without an installed .NET runtime
+
+From the repository root, publish a self-contained, single-file Windows x64 client:
+
+```bash
+dotnet publish btclient/btclient.csproj -c Release -r win-x64 \
+  --self-contained true -p:PublishAot=false -p:PublishSingleFile=true \
+  -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None \
+  -o ./publish/btclient-win-x64
+```
+
+`PublishAot=false` overrides the project default so this command can also build a Windows executable from Linux. The resulting `btclient.exe` contains the .NET runtime; the lab PCs do not need to install .NET. Copy it together with `appsettings.json` to each Windows client. The `appsettings.Development.json` file is only needed when running with `DOTNET_ENVIRONMENT=Development`.
+
+Set `Mqtt:Server` to the broker address and give each machine a unique, matching `Mqtt:ClientId` and `Client:ClientIdentifier`. Set `Client:ArtifactPath` to a writable Windows directory. The checked-in development config uses `localhost` and a Linux path, so it is not suitable for a remote Windows client without editing. This publish command was verified to produce a Windows executable, but the executable has not yet been launched on a Windows lab machine.
 
 ## Thesis workspace
 

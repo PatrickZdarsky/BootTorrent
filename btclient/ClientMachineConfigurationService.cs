@@ -1,10 +1,14 @@
 using boottorrent_lib.client;
+using btclient.torrent;
+using btclient.torrent.monotorrent;
 
 namespace btclient;
 
 public class ClientMachineConfigurationService(
     ILogger<ClientMachineConfigurationService> logger,
-    ClientMqttService clientMqttService)
+    ClientMqttService clientMqttService,
+    OriginPeerConnectionPolicy originPolicy,
+    IOriginPeerConnectionController connectionController)
 {
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
@@ -14,7 +18,10 @@ public class ClientMachineConfigurationService(
 
     public async Task ApplyConfigurationAsync(MachineConfiguration configuration, CancellationToken cancellationToken = default)
     {
-        var normalizedConfiguration = MachineConfiguration.Create(configuration.AssignedZones, configuration.DistributionZoneId);
+        var normalizedConfiguration = MachineConfiguration.Create(
+            configuration.AssignedZones, configuration.DistributionZoneId, configuration.ProxyArtifactIds,
+            configuration.OriginPeerAddress, configuration.OriginPeerPort);
+        var resetConnections = false;
 
         await _mutex.WaitAsync(cancellationToken);
         try
@@ -33,11 +40,14 @@ public class ClientMachineConfigurationService(
             }
 
             CurrentConfiguration = normalizedConfiguration;
+            resetConnections = originPolicy.Apply(normalizedConfiguration);
         }
         finally
         {
             _mutex.Release();
         }
+
+        if (resetConnections) await connectionController.ResetConnectionsAsync();
 
         logger.LogInformation(
             "Applied machine configuration hash {ConfigHash}. Assigned zones: {AssignedZones}.",

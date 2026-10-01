@@ -3,7 +3,12 @@ using boottorrent_lib.communication;
 using boottorrent_lib.communication.message;
 using btserver.Zone;
 using btserver.Data;
+using btserver.Config;
+using btserver.torrent.monotorrent;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using System.Net;
+using System.Net.Sockets;
 
 namespace btserver.Swarm;
 
@@ -12,7 +17,8 @@ public class MachineConfigurationService(
     ILogger<MachineConfigurationService> logger,
     ZoneManager zoneManager,
     IServiceScopeFactory scopeFactory,
-    Lazy<ServerMqttService> mqttService) : IMachineRegistryObserver
+    Lazy<ServerMqttService> mqttService,
+    IOptions<TorrentConfig> torrentConfig) : IMachineRegistryObserver
 {
     /// <summary>Publishes the registered machine's current zone configuration when needed.</summary>
     /// <param name="machine">The registered machine.</param>
@@ -24,9 +30,10 @@ public class MachineConfigurationService(
     /// <returns>A task for any required publications.</returns>
     public async Task OnMachineHeartbeatAsync(Machine machine)
     {
+        // Election may have changed since the last heartbeat, even when zone membership did not.
+        await EnsureConfigurationAsync(machine);
         if (!string.Equals(machine.ReportedConfigHash, machine.DesiredConfigHash, StringComparison.Ordinal))
         {
-            await EnsureConfigurationAsync(machine);
             return;
         }
 
@@ -105,7 +112,17 @@ public class MachineConfigurationService(
             logger.LogError("Machine {MachineId} matches multiple distribution zones: {ZoneIds}.", machine.Id, membership.ConflictingDistributionZoneIds);
         }
 
-        var configuration = MachineConfiguration.Create(membership.ManagementZoneIds, membership.DistributionZoneId);
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BtDbContext>();
+        var proxyArtifactIds = Guid.TryParse(membership.DistributionZoneId, out var zoneId)
+            ? await db.ProxyDesignations.AsNoTracking()
+                .Where(item => item.ZoneId == zoneId && item.MachineId == machine.Id)
+                .Select(item => item.ArtifactId).ToListAsync(cancellationToken)
+            : [];
+        var originAddress = ResolveOriginAddress(torrentConfig.Value.TrackerUrl);
+        var configuration = MachineConfiguration.Create(
+            membership.ManagementZoneIds, membership.DistributionZoneId, proxyArtifactIds,
+            originAddress, originAddress is null ? 0 : MonoTorrentSeederService.PeerPort);
         machine.AssignedZones = configuration.AssignedZones;
         machine.DistributionZoneId = configuration.DistributionZoneId;
         machine.ConflictingDistributionZoneIds = membership.ConflictingDistributionZoneIds;
@@ -128,5 +145,20 @@ public class MachineConfigurationService(
         await mqttService.Value.PublishAsync(
             new MachineConfigurationMessage { Configuration = configuration },
             MqttTopicContext.CreateCommandForMachine(machine.Id, MachineConfigurationMessage.MessageType));
+    }
+
+    private static string? ResolveOriginAddress(string trackerUrl)
+    {
+        if (!Uri.TryCreate(trackerUrl, UriKind.Absolute, out var uri)) return null;
+        if (IPAddress.TryParse(uri.Host, out var address)) return address.ToString();
+        try
+        {
+            return Dns.GetHostAddresses(uri.Host)
+                .FirstOrDefault(candidate => candidate.AddressFamily == AddressFamily.InterNetwork)?.ToString();
+        }
+        catch (SocketException)
+        {
+            return null;
+        }
     }
 }

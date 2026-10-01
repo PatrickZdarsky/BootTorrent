@@ -26,6 +26,7 @@ builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<ClientMqttService>();
 builder.Services.AddSingleton<ClientMachineConfigurationService>();
+builder.Services.AddSingleton<OriginPeerConnectionPolicy>();
 builder.Services.AddSingleton<ArtifactRegistry>();
 builder.Services.AddSingleton<ArtifactUnassignmentHandler>();
 builder.Services.AddSingleton<ArtifactAssignmentHandler>();
@@ -33,7 +34,9 @@ builder.Services.AddSingleton<MachineConfigurationHandler>();
 builder.Services.AddSingleton<MachineReRegisterHandler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ClientMqttService>());
 
-builder.Services.AddSingleton<ITorrentClient, MonoTorrentClient>();
+builder.Services.AddSingleton<MonoTorrentClient>();
+builder.Services.AddSingleton<ITorrentClient>(sp => sp.GetRequiredService<MonoTorrentClient>());
+builder.Services.AddSingleton<IOriginPeerConnectionController>(sp => sp.GetRequiredService<MonoTorrentClient>());
 
 builder.Services.AddHostedService<ClientStatusWorker>();
 

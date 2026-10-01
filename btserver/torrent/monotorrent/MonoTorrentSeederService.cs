@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 
 public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, IAsyncDisposable
 {
+    public const int PeerPort = 55123;
     private readonly ConcurrentDictionary<string, TorrentManager> _managers = new();
     private readonly SemaphoreSlim _sync = new(1, 1);
 
@@ -261,7 +262,7 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
     public IPEndPoint GetClientEndpoint()
     {
         //Todo: Make me configureable
-        return new IPEndPoint(IPAddress.Any, 55123);
+        return new IPEndPoint(IPAddress.Any, PeerPort);
     }
 
     public async ValueTask DisposeAsync()
