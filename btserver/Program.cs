@@ -88,6 +88,7 @@ builder.Services.AddSingleton<ITorrentSeederService>(sp => sp.GetRequiredService
 
 builder.Services.AddScoped<ArtifactAssigner>();
 builder.Services.AddScoped<ZoneArtifactAssignmentService>();
+builder.Services.AddScoped<IArtifactAssignmentPublisher>(sp => sp.GetRequiredService<ZoneArtifactAssignmentService>());
 
 builder.Services.AddHostedService<Worker>();
 

@@ -43,7 +43,7 @@ public class MachineConfigurationService(
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BtDbContext>();
-        var publisher = scope.ServiceProvider.GetRequiredService<ZoneArtifactAssignmentService>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IArtifactAssignmentPublisher>();
         var zones = await db.Zones.AsNoTracking().ToListAsync();
         var artifactIds = zones.Where(zone => zone.Contains(machine))
             .SelectMany(zone => zone.AssignedArtifactIds)

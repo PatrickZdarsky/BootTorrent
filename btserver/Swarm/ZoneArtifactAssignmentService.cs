@@ -9,7 +9,7 @@ namespace btserver.Swarm;
 /// <summary>Publishes artifact assignment commands to zone or machine MQTT topics.</summary>
 public class ZoneArtifactAssignmentService(
     ITorrentArtifactRegistry artifactRegistry,
-    Lazy<ServerMqttService> mqttService)
+    Lazy<ServerMqttService> mqttService) : IArtifactAssignmentPublisher
 {
     /// <summary>Publishes an artifact assignment to a zone.</summary>
     /// <param name="zone">The destination zone.</param>
