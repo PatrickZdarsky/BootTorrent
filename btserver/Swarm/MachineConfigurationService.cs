@@ -30,13 +30,14 @@ public class MachineConfigurationService(
             return;
         }
 
-        if (!string.Equals(machine.LastAssignmentReconciliationHash, machine.DesiredConfigHash, StringComparison.Ordinal))
+        if (!string.Equals(machine.LastAssignmentReconciliationHash, machine.DesiredConfigHash, StringComparison.Ordinal) ||
+            DateTime.UtcNow - machine.LastAssignmentReconciliationUtc >= TimeSpan.FromSeconds(5))
         {
             await EnsureOutstandingAssignmentsAsync(machine);
         }
     }
 
-    /// <summary>Replays assignments missing from an acknowledged machine configuration once per desired hash.</summary>
+    /// <summary>Replays missing assignments and removes stale artifacts after a configuration is acknowledged.</summary>
     /// <param name="machine">The machine whose loaded and pending artifacts are checked.</param>
     /// <returns>A task for any machine-scoped assignment publications.</returns>
     private async Task EnsureOutstandingAssignmentsAsync(Machine machine)
@@ -60,7 +61,15 @@ public class MachineConfigurationService(
                 machine.PendingArtifacts.ContainsKey(artifactId)) continue;
             await publisher.PublishAssignmentToMachineAsync(machine.Id, artifactId, CancellationToken.None);
         }
+        var knownArtifactIds = machine.KnownArtifacts
+            .Concat(machine.LoadedArtifacts)
+            .Concat(machine.PendingArtifacts.Keys)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var artifactId in knownArtifactIds.Except(artifactIds, StringComparer.Ordinal))
+            await publisher.PublishUnassignmentToMachineAsync(machine.Id, artifactId, CancellationToken.None);
+
         machine.LastAssignmentReconciliationHash = machine.DesiredConfigHash;
+        machine.LastAssignmentReconciliationUtc = DateTime.UtcNow;
     }
 
     /// <summary>Recomputes and publishes one machine's desired zone configuration if its reported hash differs.</summary>

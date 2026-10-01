@@ -12,6 +12,7 @@ namespace btclient.artifact;
 public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorrentClient torrentClient, IHttpClientFactory httpClientFactory, ILogger<ArtifactRegistry> logger)
 {
     private readonly SemaphoreSlim _assignmentGate = new(1, 1);
+    private readonly object _stateLock = new();
     private readonly HashSet<string> _loadedFromDiskIds = new(StringComparer.Ordinal);
     public List<ITorrentStatus> ActiveJobs { get; } = new();
 
@@ -26,9 +27,12 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
         await _assignmentGate.WaitAsync();
         try
         {
-            if (ActiveJobs.Any(job => job.TorrentJob.ArtifactId == torrentJob.ArtifactId) ||
-                (Artifacts.Any(artifact => artifact.ID == torrentJob.ArtifactId) &&
-                 !_loadedFromDiskIds.Contains(torrentJob.ArtifactId)))
+            bool duplicate;
+            lock (_stateLock)
+                duplicate = ActiveJobs.Any(job => job.TorrentJob.ArtifactId == torrentJob.ArtifactId) ||
+                    (Artifacts.Any(artifact => artifact.ID == torrentJob.ArtifactId) &&
+                     !_loadedFromDiskIds.Contains(torrentJob.ArtifactId));
+            if (duplicate)
             {
                 logger.LogDebug("Ignoring duplicate assignment for artifact {ArtifactId}.", torrentJob.ArtifactId);
                 return;
@@ -39,27 +43,36 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
             var artifactMetaDataPath = Path.Combine(artifactDirectoryPath, fileName + ".meta.json");
 
             var status = await SaveTorrentAndDownload(torrentJob);
-            _loadedFromDiskIds.Remove(torrentJob.ArtifactId);
+            if (status.State == ITorrentStatus.TorrentDownloadState.FAILED)
+            {
+                logger.LogWarning("Assignment for artifact {ArtifactId} failed and can be retried.", torrentJob.ArtifactId);
+                return;
+            }
             status.StateChanged += (s, e) =>
             {
-                var artifact = Artifacts.FirstOrDefault(a => a.ID == torrentJob.ArtifactId);
-                artifact?.State = ConvertTorrentStateToArtifactState(status.State);
-
-                if (artifact?.State == ClientHostedArtifact.ArtifactState.Ready)
+                lock (_stateLock)
                 {
-                    ActiveJobs.Remove(status);
+                    var artifact = Artifacts.FirstOrDefault(a => a.ID == torrentJob.ArtifactId);
+                    artifact?.State = ConvertTorrentStateToArtifactState(status.State);
+                    if (artifact?.State == ClientHostedArtifact.ArtifactState.Ready)
+                        ActiveJobs.Remove(status);
                 }
             };
 
-            var artifact = Artifacts.FirstOrDefault(existing => existing.ID == torrentJob.ArtifactId) ?? new ClientHostedArtifact()
+            ClientHostedArtifact artifact;
+            lock (_stateLock)
             {
-                ID = torrentJob.ArtifactId,
-                Name = torrentJob.Name,
-                State = ClientHostedArtifact.ArtifactState.Initializing
-            };
-            artifact.State = ConvertTorrentStateToArtifactState(status.State);
-            if (!Artifacts.Contains(artifact)) Artifacts.Add(artifact);
-            if (artifact.State != ClientHostedArtifact.ArtifactState.Ready) ActiveJobs.Add(status);
+                _loadedFromDiskIds.Remove(torrentJob.ArtifactId);
+                artifact = Artifacts.FirstOrDefault(existing => existing.ID == torrentJob.ArtifactId) ?? new ClientHostedArtifact()
+                {
+                    ID = torrentJob.ArtifactId,
+                    Name = torrentJob.Name,
+                    State = ClientHostedArtifact.ArtifactState.Initializing
+                };
+                artifact.State = ConvertTorrentStateToArtifactState(status.State);
+                if (!Artifacts.Contains(artifact)) Artifacts.Add(artifact);
+                if (artifact.State != ClientHostedArtifact.ArtifactState.Ready) ActiveJobs.Add(status);
+            }
             //Save metadata
             await File.WriteAllTextAsync(artifactMetaDataPath, JsonConvert.SerializeObject(artifact));
         }
@@ -89,9 +102,12 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
                 Directory.Delete(artifactDirectory, recursive: true);
             }
 
-            ActiveJobs.RemoveAll(job => job.TorrentJob.ArtifactId == artifactId);
-            Artifacts.RemoveAll(artifact => artifact.ID == artifactId);
-            _loadedFromDiskIds.Remove(artifactId);
+            lock (_stateLock)
+            {
+                ActiveJobs.RemoveAll(job => job.TorrentJob.ArtifactId == artifactId);
+                Artifacts.RemoveAll(artifact => artifact.ID == artifactId);
+                _loadedFromDiskIds.Remove(artifactId);
+            }
         }
         finally { _assignmentGate.Release(); }
     }
@@ -109,8 +125,11 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
         
         logger.LogInformation("Scanning for existing artifacts in '{ArtifactPath}'.", artifactPath);
 
-        Artifacts.Clear();
-        _loadedFromDiskIds.Clear();
+        lock (_stateLock)
+        {
+            Artifacts.Clear();
+            _loadedFromDiskIds.Clear();
+        }
 
         var artifactDirectories = Directory.GetDirectories(artifactPath);
         foreach (var artifactDirectory in artifactDirectories)
@@ -126,19 +145,36 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
             {
                 var json = File.ReadAllText(metaFile);
                 var artifact = JsonConvert.DeserializeObject<ClientHostedArtifact>(json);
-                if (artifact != null && Artifacts.All(a => a.ID != artifact.ID))
+                if (artifact != null)
                 {
-                    // Persisted metadata is not proof that a torrent is currently verified and seeding.
-                    artifact.State = ClientHostedArtifact.ArtifactState.Initializing;
-                    _loadedFromDiskIds.Add(artifact.ID);
+                    lock (_stateLock)
+                    {
+                        if (Artifacts.Any(a => a.ID == artifact.ID)) continue;
+                        // Persisted metadata is not proof that a torrent is currently verified and seeding.
+                        artifact.State = ClientHostedArtifact.ArtifactState.Initializing;
+                        _loadedFromDiskIds.Add(artifact.ID);
+                        Artifacts.Add(artifact);
+                    }
                     logger.LogInformation("Found artifact '{ArtifactName}' with ID '{ArtifactId}'.", artifact.Name, artifact.ID);
-                    Artifacts.Add(artifact);
                 }
             }
             catch (Exception e)
             {
                 logger.LogError(e, "Failed to load artifact from '{MetaFile}'.", metaFile);
             }
+        }
+    }
+
+    /// <summary>Captures completed, active, and locally known artifacts for a heartbeat.</summary>
+    public (List<string> Loaded, Dictionary<string, double> Pending, List<string> Known) GetStatusSnapshot()
+    {
+        lock (_stateLock)
+        {
+            return (
+                Artifacts.Where(artifact => artifact.State == ClientHostedArtifact.ArtifactState.Ready)
+                    .Select(artifact => artifact.ID).ToList(),
+                ActiveJobs.ToDictionary(job => job.TorrentJob.ArtifactId, job => job.PercentageComplete),
+                Artifacts.Select(artifact => artifact.ID).ToList());
         }
     }
 

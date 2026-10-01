@@ -87,10 +87,12 @@ public class MachineRegistry : IHostedService, IDisposable, IActiveMachineSource
                     existingMachine.IpAddress = message.IPAddress;
                     existingMachine.LastSeen = DateTime.UtcNow;
                     existingMachine.LoadedArtifacts = [];
+                    existingMachine.KnownArtifacts = [];
                     existingMachine.PendingArtifacts = [];
                     existingMachine.ReportedConfigHash = string.Empty;
                     existingMachine.HasReportedStatus = false;
                     existingMachine.LastAssignmentReconciliationHash = string.Empty;
+                    existingMachine.LastAssignmentReconciliationUtc = default;
                     return existingMachine;
                 });
 
@@ -133,6 +135,7 @@ public class MachineRegistry : IHostedService, IDisposable, IActiveMachineSource
             machine.LastSeen = DateTime.UtcNow;
             machine.HasReportedStatus = true;
             machine.LoadedArtifacts = message.LoadedArtifacts;
+            machine.KnownArtifacts = message.KnownArtifacts ?? [];
             machine.PendingArtifacts = message.PendingArtifacts;
             machine.ReportedConfigHash = message.ConfigHash;
             _logger.LogTrace("Received heartbeat for machine {MachineId}.", machineId);

@@ -137,25 +137,18 @@ public class ArtifactController(
         await dbContext.SaveChangesAsync(cancellationToken);
         await proxyElectionService.ReconcileAllAsync(cancellationToken);
 
-        foreach (var affectedZone in affectedZones)
+        try
         {
-            try
-            {
-                await zoneArtifactAssignmentService.PublishUnassignmentAsync(affectedZone.Id, artifactId, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(
-                    ex,
-                    "Artifact {ArtifactId} was unassigned in the database, but publishing the zone unassignment command for zone {ZoneId} failed.",
-                    artifactId,
-                    affectedZone.Id);
-
-                return Problem(
-                    title: "Artifact unassignment publish failed",
-                    detail: $"Artifact assignments were removed from the server state, but publishing the unassignment command for zone '{affectedZone.Id}' failed.",
-                    statusCode: StatusCodes.Status500InternalServerError);
-            }
+            await zoneArtifactAssignmentService.PublishUnassignmentAsync(
+                affectedZones.Select(zone => zone.Id), artifactId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Artifact {ArtifactId} was unassigned in the database, but publishing machine unassignment commands failed.", artifactId);
+            return Problem(
+                title: "Artifact unassignment publish failed",
+                detail: "Artifact assignments were removed from server state, but publishing machine unassignment commands failed.",
+                statusCode: StatusCodes.Status500InternalServerError);
         }
 
         var artifactUnregistered = await artifactRegistry.UnregisterArtifactAsync(artifactId, deleteFiles: true, cancellationToken);
@@ -234,7 +227,7 @@ public class ArtifactController(
     /// <param name="cancellationToken">Cancels the request.</param>
     /// <returns>The remaining assignments, or 404 when the zone does not exist.</returns>
     [HttpDelete("{artifactId}/zones/{zoneId:guid}")]
-    [SwaggerOperation(Summary = "Unassigns an artifact from a zone and publishes a zone-scoped unassignment command.")]
+    [SwaggerOperation(Summary = "Unassigns an artifact from a zone and notifies machines without another assignment.")]
     [SwaggerResponse(StatusCodes.Status200OK, "The zone assignment was updated.", typeof(ZoneArtifactAssignmentResultDto))]
     [SwaggerResponse(StatusCodes.Status404NotFound, "The zone was not found.")]
     public async Task<ActionResult<ZoneArtifactAssignmentResultDto>> UnassignArtifactFromZone(

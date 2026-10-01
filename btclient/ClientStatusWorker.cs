@@ -1,9 +1,7 @@
-using boottorrent_lib.artifact;
 using boottorrent_lib.communication;
 using boottorrent_lib.communication.message;
 using btclient.artifact;
 using btclient.torrent;
-using btclient.torrent.monotorrent;
 
 namespace btclient;
 
@@ -28,34 +26,56 @@ public class ClientStatusWorker : BackgroundService
         _machineConfigurationService = machineConfigurationService;
         _artifactRegistry = artifactRegistry;
         _torrentClient = torrentClient;
-        
         _artifactRegistry.LoadExistingArtifacts();
-        
-        _mqttService.MqttConnectionEstablished += async (sender, args) =>
-        {
-            await _machineConfigurationService.ResubscribeAsync();
-            await _mqttService.PublishAsync(new MachineStartedMessage { IPAddress = NetworkHelper.GetPrimaryIPv4()?.ToString() ?? "UNKNOWN" },
-                _mqttService.EventFromMachine(MachineStartedMessage.MessageType));
-        };
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _torrentClient.StartAsync();
-        
-        while (!stoppingToken.IsCancellationRequested)
+        var registeredGeneration = 0;
+        try
         {
-            await _mqttService.PublishAsync(new MachineHeartbeatMessage()
-            { 
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                LoadedArtifacts = _artifactRegistry.Artifacts.Where(a => a.State == ClientHostedArtifact.ArtifactState.Ready).Select(a => a.ID).ToList(),
-                PendingArtifacts = _artifactRegistry.ActiveJobs.ToDictionary(a => a.TorrentJob.ArtifactId, a => a.PercentageComplete),
-                ConfigHash = _machineConfigurationService.CurrentConfigHash
-            }, _mqttService.EventFromMachine(MachineHeartbeatMessage.MessageType));
+            await _torrentClient.StartAsync();
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                if (_mqttService.IsConnected && _mqttService.ConnectionGeneration > 0)
+                {
+                    try
+                    {
+                        var generation = _mqttService.ConnectionGeneration;
+                        if (registeredGeneration != generation)
+                        {
+                            await _machineConfigurationService.ResubscribeAsync(stoppingToken);
+                            await _mqttService.PublishAsync(new MachineStartedMessage
+                            {
+                                IPAddress = NetworkHelper.GetPrimaryIPv4()?.ToString() ?? "UNKNOWN"
+                            }, _mqttService.EventFromMachine(MachineStartedMessage.MessageType));
+                            registeredGeneration = generation;
+                        }
 
-            await Task.Delay(1000, stoppingToken);
+                        var status = _artifactRegistry.GetStatusSnapshot();
+                        await _mqttService.PublishAsync(new MachineHeartbeatMessage
+                        {
+                            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            LoadedArtifacts = status.Loaded,
+                            PendingArtifacts = status.Pending,
+                            KnownArtifacts = status.Known,
+                            ConfigHash = _machineConfigurationService.CurrentConfigHash
+                        }, _mqttService.EventFromMachine(MachineHeartbeatMessage.MessageType));
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Client status publication failed; retrying.");
+                    }
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+            }
         }
-        
-        await _torrentClient.StopAsync();
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        finally
+        {
+            await _torrentClient.StopAsync();
+        }
     }
 }

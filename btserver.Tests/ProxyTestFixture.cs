@@ -88,10 +88,17 @@ internal sealed class MutableMachineSource : IActiveMachineSource
 internal sealed class RecordingAssignmentPublisher : IArtifactAssignmentPublisher
 {
     public List<(string MachineId, string ArtifactId)> Published { get; } = [];
+    public List<(string MachineId, string ArtifactId)> Unassigned { get; } = [];
 
     public Task PublishAssignmentToMachineAsync(string machineId, string artifactId, CancellationToken cancellationToken)
     {
         Published.Add((machineId, artifactId));
+        return Task.CompletedTask;
+    }
+
+    public Task PublishUnassignmentToMachineAsync(string machineId, string artifactId, CancellationToken cancellationToken)
+    {
+        Unassigned.Add((machineId, artifactId));
         return Task.CompletedTask;
     }
 }

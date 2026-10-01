@@ -9,28 +9,18 @@ namespace btclient;
 public class ClientMqttService : MqttMessageService
 {
     public readonly BTClientSettings ClientSettings;
+    private readonly ILogger<ClientMqttService> _logger;
+    private int _connectionGeneration;
+
+    public bool IsConnected => MqttClient.IsConnected;
+    public int ConnectionGeneration => Volatile.Read(ref _connectionGeneration);
     
-    public event EventHandler? MqttConnectionEstablished;
-    
-    public ClientMqttService(IOptions<MqttSettings> mqttOptions, ILogger<ClientMqttService> logger, 
-        MessageDispatcher dispatcher, IOptions<BTClientSettings> btClientOptions, 
-        IHostApplicationLifetime applicationLifetime)
+    public ClientMqttService(IOptions<MqttSettings> mqttOptions, ILogger<ClientMqttService> logger,
+        MessageDispatcher dispatcher, IOptions<BTClientSettings> btClientOptions)
         : base(MqttOptionsFactory.Create(mqttOptions.Value), logger, dispatcher)
     {
         ClientSettings = btClientOptions.Value;
-        
-        applicationLifetime.ApplicationStopping.Register(async void () =>
-        {
-            try
-            {
-                await PublishAsync(new MachineStoppedMessage { IPAddress = NetworkHelper.GetPrimaryIPv4()?.ToString() ?? "UNKNOWN" },
-                    EventFromMachine(MachineStoppedMessage.MessageType));
-            }
-            catch (Exception e)
-            {
-                logger.LogError(e, "Error while publishing MachineStoppedMessage during application shutdown");
-            }
-        });
+        _logger = logger;
     }
 
     protected override async Task HandleConnectedAsync(MqttClientConnectedEventArgs eventArgs)
@@ -39,17 +29,32 @@ public class ClientMqttService : MqttMessageService
         await MqttClient.SubscribeAsync("boottorrent/cmd/global/#", MqttQualityOfServiceLevel.AtLeastOnce);
         await MqttClient.SubscribeAsync($"boottorrent/cmd/machine/{ClientSettings.ClientIdentifier}/#", MqttQualityOfServiceLevel.AtLeastOnce);
         
-        // Fire the event after the connection is fully set up
-        //Todo: We might wanna check if this is a reconnect or not
-        MqttConnectionEstablished?.Invoke(this, EventArgs.Empty);
-        
-        
+        Interlocked.Increment(ref _connectionGeneration);
     }
 
     protected override Task HandleDisconnectedAsync(MqttClientDisconnectedEventArgs eventArgs)
     {
         MqttClient.ApplicationMessageReceivedAsync -= HandleMessageReceivedAsync;
         return Task.CompletedTask;
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (MqttClient.IsConnected)
+        {
+            try
+            {
+                await PublishAsync(new MachineStoppedMessage
+                {
+                    IPAddress = NetworkHelper.GetPrimaryIPv4()?.ToString() ?? "UNKNOWN"
+                }, EventFromMachine(MachineStoppedMessage.MessageType));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not publish the machine stop event.");
+            }
+        }
+        await base.StopAsync(cancellationToken);
     }
 
     public MqttTopicContext EventFromMachine(string messageType)
