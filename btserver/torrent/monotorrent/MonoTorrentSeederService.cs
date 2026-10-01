@@ -100,6 +100,7 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
             AutoSaveLoadDhtCache = false,
             AutoSaveLoadFastResume = false,
             AutoSaveLoadMagnetLinkMetadata = false,
+            AllowLocalPeerDiscovery = false,
             AllowedEncryption = [EncryptionType.RC4Full, EncryptionType.RC4Header],
         }.ToSettings();
     
@@ -195,7 +196,7 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
             {
                 AllowDht = false,
                 AllowInitialSeeding = true,
-                AllowPeerExchange = true,
+                AllowPeerExchange = false,
                 UploadSlots = 0, //Allow unlimited upload slots
             }.ToSettings());
             
@@ -246,8 +247,8 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
         var hashes = new List<string>();
         foreach (var manager in _managers.Values)
         {
-            hashes.Add(manager.InfoHashes.V1!.ToHex());
-            hashes.Add(manager.InfoHashes.V2!.ToHex());
+            if (manager.InfoHashes.V1 is not null) hashes.Add(manager.InfoHashes.V1.ToHex());
+            if (manager.InfoHashes.V2 is not null) hashes.Add(manager.InfoHashes.V2.ToHex());
         }
         return Task.FromResult(hashes);
     }

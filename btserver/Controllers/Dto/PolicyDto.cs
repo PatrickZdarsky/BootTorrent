@@ -11,6 +11,4 @@ public class PolicyDto
     [SwaggerSchema(Description = "The policy priority. Higher priority policies are evaluated first.")]
     public int Priority { get; set; }
 
-    [SwaggerSchema(Description = "Optional configuration details for configurable policies.")]
-    public SubnetZonePolicyDto? SubnetZoneConfiguration { get; set; }
 }

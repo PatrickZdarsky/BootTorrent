@@ -29,6 +29,19 @@ public class Torrent
         Peers.TryRemove(peerId, out _);
     }
 
+    /// <summary>Removes expired tracker peers and returns a snapshot of peers seen within the expiration window.</summary>
+    /// <param name="expiration">Maximum time since a peer's last announce.</param>
+    /// <returns>Peers whose last announce is within the window.</returns>
+    public List<Peer> GetActivePeers(TimeSpan expiration)
+    {
+        var threshold = DateTime.UtcNow - expiration;
+        foreach (var (peerId, peer) in Peers)
+        {
+            if (peer.LastSeen < threshold) Peers.TryRemove(peerId, out _);
+        }
+        return Peers.Values.Where(peer => peer.LastSeen >= threshold).ToList();
+    }
+
     public List<Peer> GetPeers(int count)
     {
         var peerList = new List<Peer>(Peers.Values);
@@ -45,4 +58,3 @@ public class Torrent
     public int CompletedPeers => Peers.Values.Count(p => p.Left == 0);
     public int IncompletePeers => Peers.Values.Count(p => p.Left > 0);
 }
-

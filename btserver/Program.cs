@@ -63,7 +63,11 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerMqttService>
 
 
 builder.Services.AddSingleton<MachineRegistry>();
+builder.Services.AddSingleton<IActiveMachineSource>(sp => sp.GetRequiredService<MachineRegistry>());
 builder.Services.AddSingleton<ZoneManager>();
+builder.Services.AddSingleton<IProxySelectionPolicy, StableMachineIdProxySelectionPolicy>();
+builder.Services.AddSingleton<ProxyElectionService>();
+builder.Services.AddHostedService<ProxyElectionCoordinator>();
 builder.Services.AddSingleton<MachineConfigurationService>();
 builder.Services.AddSingleton<IMachineRegistryObserver>(sp => sp.GetRequiredService<MachineConfigurationService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MachineRegistry>());
@@ -72,10 +76,9 @@ builder.Services.AddSingleton<ITorrentCreator, MonoTorrentCreator>();
 builder.Services.AddSingleton<TorrentArtifactRegistry>();
 builder.Services.AddSingleton<ITorrentArtifactRegistry>(sp => sp.GetRequiredService<TorrentArtifactRegistry>());
 builder.Services.AddSingleton<ISeederRegistry, SeederRegistry>();
-builder.Services.AddSingleton<SubnetZoneTorrentAccessPolicy>();
-builder.Services.AddSingleton<RandomPeerTorrentAccessPolicy>();
-builder.Services.AddSingleton<ITorrentAccessPolicy>(sp => sp.GetRequiredService<SubnetZoneTorrentAccessPolicy>());
-builder.Services.AddSingleton<ITorrentAccessPolicy>(sp => sp.GetRequiredService<RandomPeerTorrentAccessPolicy>());
+builder.Services.AddSingleton<CentralSeederPeerProvider>();
+builder.Services.AddSingleton<ZoneTorrentAccessPolicy>();
+builder.Services.AddSingleton<ITorrentAccessPolicy>(sp => sp.GetRequiredService<ZoneTorrentAccessPolicy>());
 builder.Services.AddSingleton<ITorrentAccessPolicyRegistry, TorrentAccessPolicyRegistry>();
 builder.Services.AddSingleton<TrackerServer>();
 
@@ -105,6 +108,12 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+using (var migrationScope = app.Services.CreateScope())
+{
+    var dbContext = migrationScope.ServiceProvider.GetRequiredService<BtDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

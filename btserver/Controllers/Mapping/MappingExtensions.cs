@@ -52,17 +52,6 @@ namespace btserver.Controllers.Mapping
             };
         }
 
-        public static SubnetZonePolicyZoneConfigurationDto ToDto(this SubnetZonePolicyConfiguration configuration, string zoneName)
-        {
-            return new SubnetZonePolicyZoneConfigurationDto
-            {
-                ZoneId = configuration.ZoneId,
-                ZoneName = zoneName,
-                ProxyCount = configuration.ProxyCount,
-                ProxyMachineIds = configuration.ProxyMachineIds
-            };
-        }
-
         public static ArtifactDto ToDto(this TorrentArtifact artifact, IEnumerable<Guid> assignedZoneIds)
         {
             return new ArtifactDto

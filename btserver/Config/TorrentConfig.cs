@@ -2,6 +2,10 @@
 
 public class TorrentConfig
 {
+    /// <summary>Seconds a tracker client should wait between announces.</summary>
+    public int AnnounceIntervalSeconds { get; set; } = 30;
+    /// <summary>Seconds since the last announce before a tracker peer expires.</summary>
+    public int PeerExpirationSeconds { get; set; } = 120;
     public string TrackerUrl { get; set; }
     
     public string ArtifactStoragePath { get; set; }

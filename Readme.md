@@ -30,14 +30,19 @@ MQTT carries commands from server to clients on `boottorrent/cmd/global/{message
 
 The checkout contains .NET 10 server, client, and shared-library projects; a custom tracker; MonoTorrent integration; MQTT registration, assignments, and heartbeats; SQLite and Entity Framework migrations; and REST controllers for artifacts, machines, zones, and policy configuration. Docker and Helm files are present. These code paths have **not** been established here as a working end-to-end deployment or benchmark.
 
-Several behaviors still differ from the intended zone design:
+Proxy election is now managed per distribution zone and artifact. The server stores a desired initial count and a selection policy for each distribution zone, keeps effective designations and transitions separately, and reconciles them on machine and assignment changes. Surviving proxies are retained without automatic refill. If the last proxy disappears, one replacement is selected only when no online assigned machine reports a complete copy. The tracker returns same-zone announced peers to clients and the central seeder only to designated proxies. Unknown or ambiguous clients receive no peers. The unrestricted random policy is not registered in normal operation.
 
-- The current subnet-zone tracker policy is coded to return central-seeder peers to designated proxies and only proxy peers to ordinary clients. It does not yet return all eligible ordinary peers within the zone. When it finds no announced proxy peer, it tries to return central-seeder peers to an ordinary client. That fallback violates the rule above and must be removed or replaced with proxy reassignment while preserving local peer access. Seeder registration is currently missing, so these responses may be empty in practice.
-- Proxy IDs can be configured, and the policy fills vacant proxy slots from active zone machines. Selection currently follows machine-ID order; it does not use load or uptime. Availability of a complete zone copy is not yet used to decide whether a replacement proxy needs central access.
-- Zone artifact assignments are published as MQTT commands. The current startup path does not reconcile every artifact assigned to a zone for a machine that was offline when the assignment was published. Late-join behavior therefore needs implementation and verification.
-- Central-seeder registration, verified client completion, and observed payload paths need end-to-end checking before source-traffic or locality claims can be made. Tracker peer lists are discovery decisions, not measurements of transferred bytes.
+The complete control and transfer sequence is documented in [Proxy election and artifact distribution flow](wiki/proxy-election-flow.md).
 
-The lower-priority `random-fallback` tracker policy is an unrestricted peer-selection policy for requests that the subnet-zone policy does not handle. It is not a recovery path that should grant ordinary zone clients central-seeder access.
+The server migrates its SQLite database at startup. The former subnet-zone proxy count and IDs are migrated to the new configuration as an initial count and preferred IDs. The default distribution zone has a stable ID and supports artifact assignment through the ordinary artifact-zone endpoint.
+
+Proxy APIs:
+
+- `GET/PUT /api/v1/policies/zones/{zoneId}/proxies`: desired count, selection policy key, and preferred IDs.
+- `GET/PUT /api/v1/policies/zones/{zoneId}/artifacts/{artifactId}/proxies`: inspect or explicitly designate the online proxy machines for an artifact.
+- `GET /api/v1/policies/zones/{zoneId}/artifacts/{artifactId}/proxy-transitions`: recent election changes.
+
+End-to-end transfer and payload-path verification is still required. Tracker filtering and disabled DHT, peer exchange, and local discovery limit discovery, but the central MonoTorrent seeder does not authenticate incoming peers against the election state. A client that learns its endpoint by another means may connect directly; enforce origin admission at the seeder or network boundary before treating the origin-access rule as a security guarantee.
 
 ## Build and configuration
 

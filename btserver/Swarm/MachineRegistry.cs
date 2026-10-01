@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace btserver.Swarm;
 
-public class MachineRegistry : IHostedService, IDisposable
+public class MachineRegistry : IHostedService, IDisposable, IActiveMachineSource
 {
     private readonly ILogger<MachineRegistry> _logger;
     private readonly IEnumerable<IMachineRegistryObserver> _observers;
@@ -18,9 +18,14 @@ public class MachineRegistry : IHostedService, IDisposable
 
     public ConcurrentDictionary<string, Machine> Machines { get; } = new();
 
+    /// <summary>Gets a snapshot of machines currently held in the registry.</summary>
+    /// <returns>The currently registered machines.</returns>
+    public IReadOnlyCollection<Machine> GetActiveMachines() => Machines.Values.ToList();
+
     public event EventHandler<MachineRegistryEventArgs>? MachineStarted;
 
     public event EventHandler<MachineRegistryEventArgs>? MachineStopped;
+    public event EventHandler<MachineRegistryEventArgs>? MachineStateChanged;
 
     public MachineRegistry(
         ILogger<MachineRegistry> logger,
@@ -84,6 +89,8 @@ public class MachineRegistry : IHostedService, IDisposable
                     existingMachine.LoadedArtifacts = [];
                     existingMachine.PendingArtifacts = [];
                     existingMachine.ReportedConfigHash = string.Empty;
+                    existingMachine.HasReportedStatus = false;
+                    existingMachine.LastAssignmentReconciliationHash = string.Empty;
                     return existingMachine;
                 });
 
@@ -97,6 +104,7 @@ public class MachineRegistry : IHostedService, IDisposable
             {
                 await observer.OnMachineRegisteredAsync(machine);
             }
+            MachineStateChanged?.Invoke(this, new MachineRegistryEventArgs(machine));
         });
 
         mqttService.AddHandler<MachineStoppedMessage>(MachineStoppedMessage.MessageType, (context, _) =>
@@ -119,7 +127,11 @@ public class MachineRegistry : IHostedService, IDisposable
                 return;
             }
 
+            var completedArtifactsChanged = !machine.HasReportedStatus ||
+                !machine.LoadedArtifacts.ToHashSet(StringComparer.Ordinal)
+                    .SetEquals(message.LoadedArtifacts);
             machine.LastSeen = DateTime.UtcNow;
+            machine.HasReportedStatus = true;
             machine.LoadedArtifacts = message.LoadedArtifacts;
             machine.PendingArtifacts = message.PendingArtifacts;
             machine.ReportedConfigHash = message.ConfigHash;
@@ -128,6 +140,10 @@ public class MachineRegistry : IHostedService, IDisposable
             foreach (var observer in _observers)
             {
                 await observer.OnMachineHeartbeatAsync(machine);
+            }
+            if (completedArtifactsChanged)
+            {
+                MachineStateChanged?.Invoke(this, new MachineRegistryEventArgs(machine));
             }
         });
     }

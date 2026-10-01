@@ -4,6 +4,8 @@ using btserver.Config;
 using btserver.Data;
 using btserver.Swarm;
 using btserver.torrent;
+using btserver.Zone;
+using btserver.torrent.monotorrent;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -19,6 +21,8 @@ public class ArtifactController(
     ITorrentArtifactRegistry artifactRegistry,
     BtDbContext dbContext,
     ZoneArtifactAssignmentService zoneArtifactAssignmentService,
+    ProxyElectionService proxyElectionService,
+    MonoTorrentSeederService seeder,
     IOptions<TorrentConfig> torrentOptions) : ControllerBase
 {
     [HttpGet]
@@ -33,9 +37,12 @@ public class ArtifactController(
         var zones = await dbContext.Zones
             .AsNoTracking()
             .ToListAsync(cancellationToken);
+        var defaultAssignments = (await dbContext.DefaultZoneArtifactAssignments.AsNoTracking()
+            .Select(assignment => assignment.ArtifactId).ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.Ordinal);
 
         return Ok(artifacts
-            .Select(artifact => artifact.ToDto(GetAssignedZoneIds(artifact.ID, zones)))
+            .Select(artifact => artifact.ToDto(GetAssignedZoneIds(artifact.ID, zones, defaultAssignments.Contains(artifact.ID))))
             .ToList());
     }
 
@@ -54,8 +61,10 @@ public class ArtifactController(
         var zones = await dbContext.Zones
             .AsNoTracking()
             .ToListAsync(cancellationToken);
+        var defaultAssigned = await dbContext.DefaultZoneArtifactAssignments
+            .AnyAsync(assignment => assignment.ArtifactId == artifact.ID, cancellationToken);
 
-        return Ok(artifact.ToDto(GetAssignedZoneIds(artifact.ID, zones)));
+        return Ok(artifact.ToDto(GetAssignedZoneIds(artifact.ID, zones, defaultAssigned)));
     }
 
     [HttpPost]
@@ -85,6 +94,8 @@ public class ArtifactController(
             resolvedFilePath,
             cancellationToken);
 
+        await seeder.EnsureSeedingAsync(artifact.ID, cancellationToken);
+
         var dto = artifact.ToDto([]);
         return CreatedAtAction(nameof(GetArtifact), new { artifactId = artifact.ID }, dto);
     }
@@ -101,9 +112,10 @@ public class ArtifactController(
             return NotFound();
         }
 
-        var zones = await dbContext.Zones
-            .Where(zone => zone.AssignedArtifactIds.Contains(artifactId))
-            .ToListAsync(cancellationToken);
+        var zones = (await dbContext.Zones.ToListAsync(cancellationToken))
+            .Where(zone => zone.AssignedArtifactIds.Contains(artifactId, StringComparer.Ordinal)).ToList();
+        var defaultAssignment = await dbContext.DefaultZoneArtifactAssignments
+            .FirstOrDefaultAsync(item => item.ArtifactId == artifactId, cancellationToken);
 
         var affectedZones = zones
             .Select(zone => (zone.Id, zone.Name))
@@ -116,7 +128,14 @@ public class ArtifactController(
                 .ToList();
         }
 
+        if (defaultAssignment is not null)
+        {
+            dbContext.DefaultZoneArtifactAssignments.Remove(defaultAssignment);
+            affectedZones.Add((ZoneManager.DefaultDistributionZoneId, "Default distribution zone"));
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
+        await proxyElectionService.ReconcileAllAsync(cancellationToken);
 
         foreach (var affectedZone in affectedZones)
         {
@@ -150,6 +169,11 @@ public class ArtifactController(
         return NoContent();
     }
 
+    /// <summary>Persists an artifact assignment, reconciles proxies, and publishes the zone command.</summary>
+    /// <param name="artifactId">The registered artifact ID.</param>
+    /// <param name="zoneId">The target zone ID, including the default distribution zone.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The zone's assignments, or 404 when the artifact or zone does not exist.</returns>
     [HttpPut("{artifactId}/zones/{zoneId:guid}")]
     [SwaggerOperation(Summary = "Assigns an artifact to a zone and publishes a zone-scoped assignment command.")]
     [SwaggerResponse(StatusCodes.Status200OK, "The zone assignment was updated.", typeof(ZoneArtifactAssignmentResultDto))]
@@ -163,6 +187,18 @@ public class ArtifactController(
         if (artifact is null)
         {
             return NotFound();
+        }
+
+        if (zoneId == ZoneManager.DefaultDistributionZoneId)
+        {
+            if (!await dbContext.DefaultZoneArtifactAssignments.AnyAsync(item => item.ArtifactId == artifactId, cancellationToken))
+            {
+                dbContext.DefaultZoneArtifactAssignments.Add(new DefaultZoneArtifactAssignment { ArtifactId = artifactId });
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            await proxyElectionService.ReconcileAllAsync(cancellationToken);
+            await zoneArtifactAssignmentService.PublishAssignmentAsync(zoneId, artifactId, cancellationToken);
+            return Ok(new ZoneArtifactAssignmentResultDto { ZoneId = zoneId, AssignedArtifactIds = [artifactId] });
         }
 
         var zone = await dbContext.Zones
@@ -182,6 +218,7 @@ public class ArtifactController(
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
+        await proxyElectionService.ReconcileAllAsync(cancellationToken);
         await zoneArtifactAssignmentService.PublishAssignmentAsync(zone, artifactId, cancellationToken);
 
         return Ok(new ZoneArtifactAssignmentResultDto
@@ -191,6 +228,11 @@ public class ArtifactController(
         });
     }
 
+    /// <summary>Removes an artifact assignment, reconciles proxies, and publishes the zone command.</summary>
+    /// <param name="artifactId">The artifact ID.</param>
+    /// <param name="zoneId">The target zone ID, including the default distribution zone.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The remaining assignments, or 404 when the zone does not exist.</returns>
     [HttpDelete("{artifactId}/zones/{zoneId:guid}")]
     [SwaggerOperation(Summary = "Unassigns an artifact from a zone and publishes a zone-scoped unassignment command.")]
     [SwaggerResponse(StatusCodes.Status200OK, "The zone assignment was updated.", typeof(ZoneArtifactAssignmentResultDto))]
@@ -200,6 +242,20 @@ public class ArtifactController(
         Guid zoneId,
         CancellationToken cancellationToken)
     {
+        if (zoneId == ZoneManager.DefaultDistributionZoneId)
+        {
+            var assignment = await dbContext.DefaultZoneArtifactAssignments
+                .FirstOrDefaultAsync(item => item.ArtifactId == artifactId, cancellationToken);
+            if (assignment is not null)
+            {
+                dbContext.DefaultZoneArtifactAssignments.Remove(assignment);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            await proxyElectionService.ReconcileAllAsync(cancellationToken);
+            await zoneArtifactAssignmentService.PublishUnassignmentAsync(zoneId, artifactId, cancellationToken);
+            return Ok(new ZoneArtifactAssignmentResultDto { ZoneId = zoneId });
+        }
+
         var zone = await dbContext.Zones
             .FirstOrDefaultAsync(existingZone => existingZone.Id == zoneId, cancellationToken);
 
@@ -214,6 +270,7 @@ public class ArtifactController(
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
+        await proxyElectionService.ReconcileAllAsync(cancellationToken);
         await zoneArtifactAssignmentService.PublishUnassignmentAsync(zone, artifactId, cancellationToken);
 
         return Ok(new ZoneArtifactAssignmentResultDto
@@ -229,11 +286,12 @@ public class ArtifactController(
         return artifacts.GetValueOrDefault(artifactId);
     }
 
-    private static IEnumerable<Guid> GetAssignedZoneIds(string artifactId, IEnumerable<btserver.Zone.Zone> zones)
+    private static IEnumerable<Guid> GetAssignedZoneIds(string artifactId, IEnumerable<btserver.Zone.Zone> zones, bool defaultAssigned)
     {
-        return zones
+        var zoneIds = zones
             .Where(zone => zone.AssignedArtifactIds.Contains(artifactId, StringComparer.Ordinal))
             .Select(zone => zone.Id);
+        return defaultAssigned ? zoneIds.Append(ZoneManager.DefaultDistributionZoneId) : zoneIds;
     }
 
     private ActionResult ValidationProblem(string key, string detail)

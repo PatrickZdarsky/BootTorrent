@@ -10,6 +10,8 @@ public class TrackerServer
 {
     private readonly HttpListener _listener;
     private readonly string _listeningUri;
+    private readonly int _announceIntervalSeconds;
+    private readonly TimeSpan _peerExpiration;
     private readonly ConcurrentDictionary<string, Torrent> _torrents = new();
     private readonly ILogger<TrackerServer> _logger;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -34,6 +36,8 @@ public class TrackerServer
         _artifactRegistry = artifactRegistry;
         _torrentAccessPolicyRegistry = torrentAccessPolicyRegistry;
         _listeningUri = settings.Value.TrackerUrl;
+        _announceIntervalSeconds = Math.Max(5, settings.Value.AnnounceIntervalSeconds);
+        _peerExpiration = TimeSpan.FromSeconds(Math.Max(_announceIntervalSeconds * 2, settings.Value.PeerExpirationSeconds));
         _listener = new HttpListener();
         _listener.Prefixes.Add(settings.Value.TrackerBindAddress + settings.Value.AnnounceSuffix);
         _listener.Prefixes.Add(settings.Value.TrackerBindAddress + settings.Value.TorrentFileGetSuffix);
@@ -160,12 +164,13 @@ public class TrackerServer
             return;
         }
         torrent.UpdatePeer(requestingPeer);
+        var activePeers = torrent.GetActivePeers(_peerExpiration);
         
         var responseDict = new BEncodedDictionary
         {
-            { "interval", new BEncodedNumber(900) },
-            { "complete", new BEncodedNumber(torrent.CompletedPeers) },
-            { "incomplete", new BEncodedNumber(torrent.IncompletePeers - (requestingPeer.Left > 0 ? 1 : 0)) }
+            { "interval", new BEncodedNumber(_announceIntervalSeconds) },
+            { "complete", new BEncodedNumber(activePeers.Count(peer => peer.Left == 0)) },
+            { "incomplete", new BEncodedNumber(activePeers.Count(peer => peer.Left > 0) - (requestingPeer.Left > 0 ? 1 : 0)) }
         };
 
         if (requestingPeer.Left == 0)
@@ -177,7 +182,7 @@ public class TrackerServer
             var peers = await _torrentAccessPolicyRegistry.GetPeersForAnnounceAsync(new TorrentPeerRequest(
                 announceRequest.InfoHash,
                 requestingPeer,
-                torrent.GetPeers(50),
+                activePeers,
                 50,
                 null,
                 []));

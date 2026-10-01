@@ -14,7 +14,7 @@ public class MonoTorrentClient(ILogger<MonoTorrentClient> logger) : ITorrentClie
     {
         var torrent = await Torrent.LoadAsync(torrentFilePath);
         var manager = await engine.AddAsync(torrent, downloadPath, 
-            new TorrentSettingsBuilder{AllowDht = false}.ToSettings());
+            new TorrentSettingsBuilder{AllowDht = false, AllowPeerExchange = false}.ToSettings());
         manager.PeersFound += (_, args) =>
         {
             logger.LogInformation("Found {PeerCount} peers for torrent {TorrentName} with info hash {InfoHash}",
@@ -63,6 +63,7 @@ public class MonoTorrentClient(ILogger<MonoTorrentClient> logger) : ITorrentClie
             AutoSaveLoadDhtCache = false,
             AutoSaveLoadFastResume = false,
             AutoSaveLoadMagnetLinkMetadata = false,
+            AllowLocalPeerDiscovery = false,
             StaleRequestTimeout = TimeSpan.FromSeconds(5),
             AllowedEncryption = [EncryptionType.RC4Full, EncryptionType.RC4Header],
         }.ToSettings();

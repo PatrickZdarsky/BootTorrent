@@ -15,26 +15,123 @@ namespace btserver.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.7");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
-            modelBuilder.Entity("btserver.Data.SubnetZonePolicyConfiguration", b =>
+            modelBuilder.Entity("btserver.Data.DefaultZoneArtifactAssignment", b =>
+                {
+                    b.Property<string>("ArtifactId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ArtifactId");
+
+                    b.ToTable("DefaultZoneArtifactAssignments");
+                });
+
+            modelBuilder.Entity("btserver.Data.ProxyDesignation", b =>
+                {
+                    b.Property<Guid>("ZoneId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArtifactId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MachineId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("SelectedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ZoneId", "ArtifactId", "MachineId");
+
+                    b.ToTable("ProxyDesignations");
+                });
+
+            modelBuilder.Entity("btserver.Data.ProxyElectionState", b =>
+                {
+                    b.Property<Guid>("ZoneId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArtifactId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AppliedInitialCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Initialized")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ZoneId", "ArtifactId");
+
+                    b.ToTable("ProxyElectionStates");
+                });
+
+            modelBuilder.Entity("btserver.Data.ProxyElectionTransition", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArtifactId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MachineId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ZoneId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ZoneId", "ArtifactId", "Id");
+
+                    b.ToTable("ProxyElectionTransitions");
+                });
+
+            modelBuilder.Entity("btserver.Data.ProxyZoneConfiguration", b =>
                 {
                     b.Property<Guid>("ZoneId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("ProxyCount")
+                    b.Property<int>("DesiredInitialCount")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("ProxyMachineIdsJson")
+                    b.Property<string>("PreferredMachineIdsJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT")
                         .HasDefaultValue("[]");
 
+                    b.Property<string>("SelectionPolicyKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.HasKey("ZoneId");
 
-                    b.ToTable("SubnetZonePolicyConfigurations");
+                    b.ToTable("ProxyZoneConfigurations");
                 });
 
             modelBuilder.Entity("btserver.Zone.Zone", b =>

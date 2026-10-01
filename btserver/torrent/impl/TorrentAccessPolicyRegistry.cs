@@ -85,8 +85,9 @@ public class TorrentAccessPolicyRegistry : ITorrentAccessPolicyRegistry
 
     private static Machine? TryResolveMachine(IPAddress ipAddress, IEnumerable<Machine> machines)
     {
-        return machines.FirstOrDefault(machine =>
+        var matches = machines.Where(machine =>
             IPAddress.TryParse(machine.IpAddress, out var machineAddress) &&
-            machineAddress.Equals(ipAddress));
+            machineAddress.Equals(ipAddress)).Take(2).ToList();
+        return matches.Count == 1 ? matches[0] : null;
     }
 }

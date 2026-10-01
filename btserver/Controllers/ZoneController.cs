@@ -15,7 +15,8 @@ namespace btserver.Controllers;
 public class ZoneController(
     BtDbContext dbContext,
     MachineRegistry machineRegistry,
-    MachineConfigurationService machineConfigurationService) : ControllerBase
+    MachineConfigurationService machineConfigurationService,
+    ProxyElectionService proxyElectionService) : ControllerBase
 {
     [HttpGet]
     [SwaggerOperation(Summary = "Retrieves all zones.")]
@@ -28,7 +29,9 @@ public class ZoneController(
             .ToListAsync(cancellationToken);
 
         var result = zones.Select(zone => zone.ToDto()).ToList();
-        result.Add(DefaultDistributionZoneDto());
+        var defaultArtifactIds = await dbContext.DefaultZoneArtifactAssignments.AsNoTracking()
+            .Select(assignment => assignment.ArtifactId).ToListAsync(cancellationToken);
+        result.Add(DefaultDistributionZoneDto(defaultArtifactIds));
         return Ok(result);
     }
 
@@ -40,7 +43,9 @@ public class ZoneController(
     {
         if (id == ZoneManager.DefaultDistributionZoneId)
         {
-            return Ok(DefaultDistributionZoneDto());
+            var defaultArtifactIds = await dbContext.DefaultZoneArtifactAssignments.AsNoTracking()
+                .Select(assignment => assignment.ArtifactId).ToListAsync(cancellationToken);
+            return Ok(DefaultDistributionZoneDto(defaultArtifactIds));
         }
 
         var zone = await dbContext.Zones
@@ -50,6 +55,10 @@ public class ZoneController(
         return zone is null ? NotFound() : Ok(zone.ToDto());
     }
 
+    /// <summary>Creates a zone, updates active machine memberships, and reconciles proxy elections.</summary>
+    /// <param name="request">The zone definition and distribution role.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The new zone, or a validation response for invalid or overlapping distribution zones.</returns>
     [HttpPost]
     [SwaggerOperation(Summary = "Creates a new zone.")]
     [SwaggerResponse(StatusCodes.Status201Created, "The zone was created.", typeof(ZoneDto))]
@@ -70,11 +79,17 @@ public class ZoneController(
         dbContext.Zones.Add(zone);
         await dbContext.SaveChangesAsync(cancellationToken);
         await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
+        await proxyElectionService.ReconcileAllAsync(cancellationToken);
 
         var dto = zone.ToDto();
         return CreatedAtAction(nameof(GetZone), new { id = zone.Id }, dto);
     }
 
+    /// <summary>Updates a zone and recomputes affected machine memberships and proxy elections.</summary>
+    /// <param name="id">The zone ID.</param>
+    /// <param name="request">The updated zone definition.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The updated zone, or an error for an invalid or missing zone.</returns>
     [HttpPut("{id:guid}")]
     [SwaggerOperation(Summary = "Updates an existing zone.")]
     [SwaggerResponse(StatusCodes.Status200OK, "The zone was updated.", typeof(ZoneDto))]
@@ -121,10 +136,15 @@ public class ZoneController(
         existingZone.AssignedArtifactIds = updatedZone.AssignedArtifactIds;
         await dbContext.SaveChangesAsync(cancellationToken);
         await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
+        await proxyElectionService.ReconcileAllAsync(cancellationToken);
 
         return Ok(existingZone.ToDto());
     }
 
+    /// <summary>Deletes a zone and its proxy configuration, then recomputes memberships and elections.</summary>
+    /// <param name="id">The zone ID.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>204 on deletion, or 404 when the zone does not exist.</returns>
     [HttpDelete("{id:guid}")]
     [SwaggerOperation(Summary = "Deletes a zone.")]
     [SwaggerResponse(StatusCodes.Status204NoContent, "The zone was deleted.")]
@@ -139,17 +159,13 @@ public class ZoneController(
             return NotFound();
         }
 
-        var subnetZonePolicyConfiguration = await dbContext.SubnetZonePolicyConfigurations
-            .FirstOrDefaultAsync(configuration => configuration.ZoneId == id, cancellationToken);
-
-        if (subnetZonePolicyConfiguration is not null)
-        {
-            dbContext.SubnetZonePolicyConfigurations.Remove(subnetZonePolicyConfiguration);
-        }
-
         dbContext.Zones.Remove(zone);
+        var proxyConfiguration = await dbContext.ProxyZoneConfigurations
+            .FirstOrDefaultAsync(configuration => configuration.ZoneId == id, cancellationToken);
+        if (proxyConfiguration is not null) dbContext.ProxyZoneConfigurations.Remove(proxyConfiguration);
         await dbContext.SaveChangesAsync(cancellationToken);
         await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
+        await proxyElectionService.ReconcileAllAsync(cancellationToken);
         return NoContent();
     }
 
@@ -271,12 +287,13 @@ public class ZoneController(
                right.Contains(new boottorrent_lib.client.Machine("subnet-check", leftAddress));
     }
 
-    private static ZoneDto DefaultDistributionZoneDto() => new()
+    private static ZoneDto DefaultDistributionZoneDto(List<string> assignedArtifactIds) => new()
     {
         Id = ZoneManager.DefaultDistributionZoneId,
         Type = "default",
         Name = "Default distribution zone",
-        IsDistributionZone = true
+        IsDistributionZone = true,
+        AssignedArtifactIds = assignedArtifactIds
     };
 
     private static string GetZoneType(Zone.Zone zone)
