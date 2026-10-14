@@ -22,6 +22,7 @@ public class ClientMachineConfigurationService(
             configuration.AssignedZones, configuration.DistributionZoneId, configuration.ProxyArtifactIds,
             configuration.OriginPeerAddress, configuration.OriginPeerPort);
         var resetConnections = false;
+        var gainedOriginAccess = false;
 
         await _mutex.WaitAsync(cancellationToken);
         try
@@ -39,6 +40,8 @@ public class ClientMachineConfigurationService(
                 await clientMqttService.UnsubscribeFromZoneAsync(zoneId, cancellationToken);
             }
 
+            gainedOriginAccess = CurrentConfiguration.ProxyArtifactIds.Count == 0 &&
+                                 normalizedConfiguration.ProxyArtifactIds.Count > 0;
             CurrentConfiguration = normalizedConfiguration;
             resetConnections = originPolicy.Apply(normalizedConfiguration);
         }
@@ -47,7 +50,8 @@ public class ClientMachineConfigurationService(
             _mutex.Release();
         }
 
-        if (resetConnections) await connectionController.ResetConnectionsAsync();
+        if (gainedOriginAccess) await connectionController.RefreshTrackerAsync();
+        else if (resetConnections) await connectionController.ResetConnectionsAsync();
 
         logger.LogInformation(
             "Applied machine configuration hash {ConfigHash}. Assigned zones: {AssignedZones}.",

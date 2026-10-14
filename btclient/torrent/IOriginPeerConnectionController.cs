@@ -1,7 +1,8 @@
 namespace btclient.torrent;
 
-/// <summary>Closes existing torrent connections after origin access is revoked.</summary>
+/// <summary>Updates torrent peers when origin access changes.</summary>
 public interface IOriginPeerConnectionController
 {
+    Task RefreshTrackerAsync();
     Task ResetConnectionsAsync();
 }

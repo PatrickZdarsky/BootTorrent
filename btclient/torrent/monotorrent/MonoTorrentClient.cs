@@ -93,6 +93,17 @@ public class MonoTorrentClient(
         }
     }
 
+    public async Task RefreshTrackerAsync()
+    {
+        if (engine is null) return;
+        foreach (var manager in engine.Torrents.ToList())
+        {
+            // A role promotion must discover the origin promptly without
+            // dropping the peer connections and listening port already in use.
+            await manager.TrackerManager.AnnounceAsync(TorrentEvent.Started, CancellationToken.None);
+        }
+    }
+
     public async Task StopAsync()
     {
         if (engine != null)
