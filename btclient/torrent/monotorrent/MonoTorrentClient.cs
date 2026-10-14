@@ -12,6 +12,8 @@ public class MonoTorrentClient(
     IOptions<BTClientSettings> clientSettings) : ITorrentClient, IOriginPeerConnectionController
 {
     public ClientEngine? engine;
+    private CancellationTokenSource? _announceCancellation;
+    private Task? _announceTask;
 
     public async Task<ITorrentStatus> AddTorrentAsync(TorrentJob torrentJob, string torrentFilePath, string downloadPath)
     {
@@ -80,7 +82,39 @@ public class MonoTorrentClient(
             logger.LogInformation("Rejected central seeder connection to {PeerEndpoint}; machine is not a proxy.",
                 args.Peer.ConnectionUri);
         };
+        _announceCancellation = new CancellationTokenSource();
+        _announceTask = AnnounceWhileDownloadingAsync(engine, _announceCancellation.Token);
         logger.LogInformation("MonoTorrent engine started");
+    }
+
+    private async Task AnnounceWhileDownloadingAsync(ClientEngine activeEngine, CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                foreach (var manager in activeEngine.Torrents.ToList())
+                {
+                    if (manager.State != TorrentState.Downloading) continue;
+                    try
+                    {
+                        // MonoTorrent respects the tracker's update interval.
+                        // Refresh discovery when a peer or its port changes.
+                        await manager.TrackerManager.AnnounceAsync(token);
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Could not refresh tracker peers for {TorrentName}.", manager.Torrent.Name);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
     }
 
     public async Task ResetConnectionsAsync()
@@ -108,6 +142,11 @@ public class MonoTorrentClient(
     {
         if (engine != null)
         {
+            _announceCancellation?.Cancel();
+            if (_announceTask is not null) await _announceTask;
+            _announceCancellation?.Dispose();
+            _announceCancellation = null;
+            _announceTask = null;
             logger.LogInformation("Stopping MonoTorrent engine");
             await engine.StopAllAsync();
             engine.Dispose();
