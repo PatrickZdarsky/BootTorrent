@@ -83,11 +83,11 @@ public class MonoTorrentClient(
                 args.Peer.ConnectionUri);
         };
         _announceCancellation = new CancellationTokenSource();
-        _announceTask = AnnounceWhileDownloadingAsync(engine, _announceCancellation.Token);
+        _announceTask = KeepPeersAnnouncedAsync(engine, _announceCancellation.Token);
         logger.LogInformation("MonoTorrent engine started");
     }
 
-    private async Task AnnounceWhileDownloadingAsync(ClientEngine activeEngine, CancellationToken token)
+    private async Task KeepPeersAnnouncedAsync(ClientEngine activeEngine, CancellationToken token)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
         try
@@ -96,12 +96,13 @@ public class MonoTorrentClient(
             {
                 foreach (var manager in activeEngine.Torrents.ToList())
                 {
-                    if (manager.State != TorrentState.Downloading) continue;
+                    if (manager.State is not (TorrentState.Downloading or TorrentState.Seeding)) continue;
                     try
                     {
-                        // MonoTorrent respects the tracker's update interval.
-                        // Refresh discovery when a peer or its port changes.
-                        await manager.TrackerManager.AnnounceAsync(token);
+                        // The ordinary announce is suppressed by MonoTorrent's
+                        // update interval. Our lab tracker treats Started as a
+                        // refresh, which also keeps completed seeders visible.
+                        await manager.TrackerManager.AnnounceAsync(TorrentEvent.Started, token);
                     }
                     catch (OperationCanceledException) when (token.IsCancellationRequested)
                     {
