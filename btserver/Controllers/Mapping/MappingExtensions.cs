@@ -14,6 +14,11 @@ namespace btserver.Controllers.Mapping
             {
                 Id = machine.Id,
                 IpAddress = machine.IpAddress,
+                LastSeenUtc = machine.LastSeen,
+                HasReportedStatus = machine.HasReportedStatus,
+                ConfigurationAcknowledged = machine.HasReportedStatus &&
+                    !string.IsNullOrEmpty(machine.DesiredConfigHash) &&
+                    string.Equals(machine.ReportedConfigHash, machine.DesiredConfigHash, StringComparison.Ordinal),
                 ManagementZoneIds = machine.AssignedZones,
                 DistributionZoneId = machine.DistributionZoneId,
                 ConflictingDistributionZoneIds = machine.ConflictingDistributionZoneIds,
@@ -52,12 +57,14 @@ namespace btserver.Controllers.Mapping
             };
         }
 
-        public static ArtifactDto ToDto(this TorrentArtifact artifact, IEnumerable<Guid> assignedZoneIds)
+        public static ArtifactDto ToDto(this TorrentArtifact artifact, IEnumerable<Guid> assignedZoneIds, long? sizeBytes = null)
         {
             return new ArtifactDto
             {
                 Id = artifact.ID,
                 Name = artifact.Name,
+                FileSha256 = artifact.IntegritySpec.FileSha256,
+                SizeBytes = sizeBytes,
                 InfoHashV1 = artifact.InfoHashV1,
                 InfoHashV2 = artifact.InfoHashV2,
                 TorrentFileUrl = artifact.TorrentFileUrl,

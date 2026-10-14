@@ -6,6 +6,7 @@ using btserver.Swarm;
 using btserver.torrent;
 using btserver.Zone;
 using btserver.torrent.monotorrent;
+using btserver.torrent.impl;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -23,6 +24,8 @@ public class ArtifactController(
     ZoneArtifactAssignmentService zoneArtifactAssignmentService,
     ProxyElectionService proxyElectionService,
     MonoTorrentSeederService seeder,
+    ISeederRegistry seederRegistry,
+    CentralSeederPeerProvider seederPeerProvider,
     IOptions<TorrentConfig> torrentOptions) : ControllerBase
 {
     [HttpGet]
@@ -41,9 +44,11 @@ public class ArtifactController(
             .Select(assignment => assignment.ArtifactId).ToListAsync(cancellationToken))
             .ToHashSet(StringComparer.Ordinal);
 
-        return Ok(artifacts
-            .Select(artifact => artifact.ToDto(GetAssignedZoneIds(artifact.ID, zones, defaultAssignments.Contains(artifact.ID))))
-            .ToList());
+        var result = new List<ArtifactDto>();
+        foreach (var artifact in artifacts)
+            result.Add(await ToArtifactDtoAsync(artifact,
+                GetAssignedZoneIds(artifact.ID, zones, defaultAssignments.Contains(artifact.ID))));
+        return Ok(result);
     }
 
     [HttpGet("{artifactId}")]
@@ -64,7 +69,40 @@ public class ArtifactController(
         var defaultAssigned = await dbContext.DefaultZoneArtifactAssignments
             .AnyAsync(assignment => assignment.ArtifactId == artifact.ID, cancellationToken);
 
-        return Ok(artifact.ToDto(GetAssignedZoneIds(artifact.ID, zones, defaultAssigned)));
+        return Ok(await ToArtifactDtoAsync(artifact, GetAssignedZoneIds(artifact.ID, zones, defaultAssigned)));
+    }
+
+    [HttpGet("{artifactId}/readiness")]
+    [SwaggerOperation(Summary = "Reports whether an artifact's central seeder is ready to serve clients.")]
+    [SwaggerResponse(StatusCodes.Status200OK, "The artifact readiness state.", typeof(ArtifactReadinessDto))]
+    [SwaggerResponse(StatusCodes.Status404NotFound, "The artifact was not found.")]
+    public async Task<ActionResult<ArtifactReadinessDto>> GetArtifactReadiness(string artifactId)
+    {
+        var artifact = await TryGetArtifactAsync(artifactId);
+        if (artifact is null) return NotFound();
+
+        var torrentAvailable = await FileAvailableAsync(() => artifactRegistry.GetTorrentFilePathAsync(artifactId));
+        var payloadAvailable = await FileAvailableAsync(() => artifactRegistry.GetArtifactContentPathAsync(artifactId));
+        var seederActive = seeder.IsActivelySeeding(artifactId);
+        var seederAdvertised = (await seederRegistry.GetSeedersForTorrent(artifact.InfoHashV1)).Contains(seeder);
+        var endpoint = seederPeerProvider.GetAdvertisedEndpoint(seeder.GetClientEndpoint());
+        var reason = !torrentAvailable ? "Torrent metadata is unavailable."
+            : !payloadAvailable ? "Artifact payload is unavailable."
+            : !seederActive ? "Central seeder is not actively seeding this artifact."
+            : !seederAdvertised ? "Central seeder is not registered for tracker advertisement."
+            : endpoint is null ? "Central seeder advertised endpoint cannot be resolved."
+            : null;
+        return Ok(new ArtifactReadinessDto
+        {
+            ArtifactId = artifactId,
+            Ready = reason is null,
+            Reason = reason,
+            TorrentMetadataAvailable = torrentAvailable,
+            PayloadAvailable = payloadAvailable,
+            SeederActive = seederActive,
+            SeederAddress = endpoint?.Address.ToString(),
+            SeederPort = endpoint?.Port
+        });
     }
 
     [HttpPost]
@@ -96,7 +134,7 @@ public class ArtifactController(
 
         await seeder.EnsureSeedingAsync(artifact.ID, cancellationToken);
 
-        var dto = artifact.ToDto([]);
+        var dto = await ToArtifactDtoAsync(artifact, []);
         return CreatedAtAction(nameof(GetArtifact), new { artifactId = artifact.ID }, dto);
     }
 
@@ -277,6 +315,27 @@ public class ArtifactController(
     {
         var artifacts = await artifactRegistry.GetRegisteredArtifacts();
         return artifacts.GetValueOrDefault(artifactId);
+    }
+
+    private async Task<ArtifactDto> ToArtifactDtoAsync(
+        boottorrent_lib.torrent.TorrentArtifact artifact, IEnumerable<Guid> assignedZoneIds)
+    {
+        try
+        {
+            var path = await artifactRegistry.GetArtifactContentPathAsync(artifact.ID);
+            var file = new FileInfo(path);
+            return artifact.ToDto(assignedZoneIds, file.Exists ? file.Length : null);
+        }
+        catch (IOException)
+        {
+            return artifact.ToDto(assignedZoneIds);
+        }
+    }
+
+    private static async Task<bool> FileAvailableAsync(Func<Task<string>> getPath)
+    {
+        try { return System.IO.File.Exists(await getPath()); }
+        catch (IOException) { return false; }
     }
 
     private static IEnumerable<Guid> GetAssignedZoneIds(string artifactId, IEnumerable<btserver.Zone.Zone> zones, bool defaultAssigned)

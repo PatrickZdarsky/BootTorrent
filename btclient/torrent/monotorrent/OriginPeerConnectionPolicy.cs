@@ -16,7 +16,8 @@ public sealed class OriginPeerConnectionPolicy
         var address = IPAddress.TryParse(configuration.OriginPeerAddress, out var parsed) ? parsed : null;
         var next = new Snapshot(address, configuration.OriginPeerPort, configuration.ProxyArtifactIds.Count > 0);
         var previous = Interlocked.Exchange(ref _snapshot, next);
-        return previous.IsProxy && (!next.IsProxy || !Equals(previous.Address, next.Address) || previous.Port != next.Port);
+        return previous.IsProxy != next.IsProxy ||
+               (previous.IsProxy && (!Equals(previous.Address, next.Address) || previous.Port != next.Port));
     }
 
     /// <summary>Checks one outbound peer before MonoTorrent opens the connection.</summary>

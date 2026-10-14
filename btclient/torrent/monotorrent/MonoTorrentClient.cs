@@ -8,7 +8,8 @@ namespace btclient.torrent.monotorrent;
 
 public class MonoTorrentClient(
     ILogger<MonoTorrentClient> logger,
-    OriginPeerConnectionPolicy originPolicy) : ITorrentClient, IOriginPeerConnectionController
+    OriginPeerConnectionPolicy originPolicy,
+    IOptions<BTClientSettings> clientSettings) : ITorrentClient, IOriginPeerConnectionController
 {
     public ClientEngine? engine;
 
@@ -68,6 +69,7 @@ public class MonoTorrentClient(
             AllowLocalPeerDiscovery = false,
             StaleRequestTimeout = TimeSpan.FromSeconds(5),
             AllowedEncryption = [EncryptionType.RC4Full, EncryptionType.RC4Header],
+            MaximumDownloadRate = clientSettings.Value.MaximumDownloadRateBytesPerSecond,
         }.ToSettings();
 
         engine = new ClientEngine(settings);

@@ -45,6 +45,7 @@ public class ArtifactAssigner(ILogger<ArtifactAssigner> logger,
                 Name = artifact.Name,
                 ArtifactId = artifact.ID,
                 TorrentFileUrl = artifact.TorrentFileUrl,
+                FileSha256 = artifact.IntegritySpec.FileSha256,
                 DestinationSelector = null,
                 SavePath = null
             };

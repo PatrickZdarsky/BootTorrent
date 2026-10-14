@@ -12,6 +12,8 @@ public class MonoTorrentStatus(TorrentManager torrentManager) : ITorrentStatus
     }
 
     public TorrentJob TorrentJob { get; init; }
+    public string? DownloadedFilePath => torrentManager.Files.Count == 1 ? torrentManager.Files[0].FullPath : null;
+    public string? InfoHash => torrentManager.InfoHashes.V1OrV2.ToHex();
     public double PercentageComplete => torrentManager.Progress;
     public ITorrentStatus.TorrentDownloadState State => torrentManager.State switch
     {

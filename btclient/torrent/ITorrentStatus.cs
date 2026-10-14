@@ -7,6 +7,8 @@ public interface ITorrentStatus
     event EventHandler? StateChanged;
 
     TorrentJob TorrentJob { get; }
+    string? DownloadedFilePath { get; }
+    string? InfoHash { get; }
     double PercentageComplete { get; }
     TorrentDownloadState State { get; }
     

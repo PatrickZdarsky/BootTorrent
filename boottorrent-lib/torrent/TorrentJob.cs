@@ -6,6 +6,7 @@ public class TorrentJob
     public string ArtifactId { get; set; } = default!;
     public string Name { get; set; } = default!;
     public string TorrentFileUrl { get; set; } = default!;
+    public string FileSha256 { get; set; } = string.Empty;
     
     public string SavePath { get; init; } = null!;
     public DestinationSelector DestinationSelector { get; init; } = null!;

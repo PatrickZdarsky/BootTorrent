@@ -40,6 +40,9 @@ public class TrackerServer
         _peerExpiration = TimeSpan.FromSeconds(Math.Max(_announceIntervalSeconds * 2, settings.Value.PeerExpirationSeconds));
         _listener = new HttpListener();
         _listener.Prefixes.Add(settings.Value.TrackerBindAddress + settings.Value.AnnounceSuffix);
+        // MonoTorrent derives /scrape/ from /announce/ and requests it before
+        // announcing. An HttpListener 404 can reset the reused announce socket.
+        _listener.Prefixes.Add(settings.Value.TrackerBindAddress + "scrape/");
         _listener.Prefixes.Add(settings.Value.TrackerBindAddress + settings.Value.TorrentFileGetSuffix);
     }
 
@@ -124,6 +127,18 @@ public class TrackerServer
                 response.ContentType = "application/x-bittorrent";
                 response.ContentLength64 = artifact.Torrent.TorrentFileBytes.Length;
                 await response.OutputStream.WriteAsync(artifact.Torrent.TorrentFileBytes);
+                response.Close();
+                return;
+            }
+
+            if (request.Url.LocalPath.StartsWith("/scrape/", StringComparison.Ordinal))
+            {
+                // A valid scrape response without a files entry tells MonoTorrent
+                // that statistics are unavailable while leaving announce discovery intact.
+                var scrapeBytes = new BEncodedDictionary().Encode();
+                response.ContentType = "text/plain";
+                response.ContentLength64 = scrapeBytes.Length;
+                await response.OutputStream.WriteAsync(scrapeBytes);
                 response.Close();
                 return;
             }

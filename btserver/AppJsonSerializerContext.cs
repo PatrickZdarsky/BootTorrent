@@ -20,6 +20,7 @@ namespace btserver;
 [JsonSerializable(typeof(List<ProxyTransitionDto>))]
 [JsonSerializable(typeof(List<ArtifactDto>))]
 [JsonSerializable(typeof(ArtifactDto))]
+[JsonSerializable(typeof(ArtifactReadinessDto))]
 [JsonSerializable(typeof(CreateArtifactRequestDto))]
 [JsonSerializable(typeof(ZoneArtifactAssignmentResultDto))]
 internal partial class AppJsonSerializerContext : JsonSerializerContext

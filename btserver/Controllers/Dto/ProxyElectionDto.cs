@@ -34,6 +34,7 @@ public class ProxyDesignationDto
 
 public class ProxyTransitionDto
 {
+    public long Id { get; set; }
     public string MachineId { get; set; } = string.Empty;
     public string Action { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;

@@ -32,9 +32,12 @@ public class ClientStatusWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var registeredGeneration = 0;
+        using var publisherCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        Task? completionPublisher = null;
         try
         {
             await _torrentClient.StartAsync();
+            completionPublisher = PublishCompletionsAsync(publisherCancellation.Token);
             while (!stoppingToken.IsCancellationRequested)
             {
                 if (_mqttService.IsConnected && _mqttService.ConnectionGeneration > 0)
@@ -75,7 +78,40 @@ public class ClientStatusWorker : BackgroundService
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
         finally
         {
+            await publisherCancellation.CancelAsync();
+            if (completionPublisher is not null) await completionPublisher;
             await _torrentClient.StopAsync();
         }
+    }
+
+    private async Task PublishCompletionsAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await foreach (var completion in _artifactRegistry.CompletedDownloads.ReadAllAsync(stoppingToken))
+            {
+                while (!stoppingToken.IsCancellationRequested)
+                {
+                    if (!_mqttService.IsConnected)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+                        continue;
+                    }
+                    try
+                    {
+                        await _mqttService.PublishAsync(completion,
+                            _mqttService.EventFromMachine(ArtifactDownloadCompletedMessage.MessageType));
+                        break;
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Completion event for artifact {ArtifactId} could not be published; retrying.", completion.ArtifactId);
+                        await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 }

@@ -149,6 +149,13 @@ public class MachineRegistry : IHostedService, IDisposable, IActiveMachineSource
                 MachineStateChanged?.Invoke(this, new MachineRegistryEventArgs(machine));
             }
         });
+
+        mqttService.AddHandler<ArtifactDownloadCompletedMessage>(ArtifactDownloadCompletedMessage.MessageType, (context, message) =>
+        {
+            _logger.LogInformation("Machine {MachineId} verified and completed artifact {ArtifactId} at {CompletedAtUnixMilliseconds}.",
+                context.TargetId, message.ArtifactId, message.CompletedAtUnixMilliseconds);
+            return Task.CompletedTask;
+        });
     }
 
     private async Task MonitorHeartbeatsAsync(CancellationToken cancellationToken)

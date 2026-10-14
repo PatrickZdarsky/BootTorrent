@@ -1,5 +1,7 @@
 # BootTorrent architecture and intended zone policy
 
+Testbed update, 6 October 2026: the ten planned physical clients will be installed with Linux. The [deployment kit](../../lab-deployment/) records the initial setup; older Windows references on this page describe the prior plan.
+
 This page describes the **target behavior**. It is not a claim that every path works in the current checkout; see [the repository README](../Readme.md) for observed implementation gaps and [the evaluation plan](../../Evaluation-Setup.md) for verification steps.
 
 ## Why zones matter

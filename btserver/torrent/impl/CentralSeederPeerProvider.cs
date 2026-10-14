@@ -30,6 +30,9 @@ public sealed class CentralSeederPeerProvider(
         return result.DistinctBy(peer => (peer.EndPoint, peer.PeerId)).ToList();
     }
 
+    /// <summary>Resolves the endpoint the tracker advertises for a central seeder.</summary>
+    public IPEndPoint? GetAdvertisedEndpoint(IPEndPoint endpoint) => TryResolve(endpoint);
+
     private IPEndPoint? TryResolve(IPEndPoint endpoint)
     {
         if (!endpoint.Address.Equals(IPAddress.Any) && !endpoint.Address.Equals(IPAddress.IPv6Any)) return endpoint;

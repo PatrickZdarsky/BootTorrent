@@ -11,6 +11,12 @@ public class ArtifactDto
     [SwaggerSchema(Description = "The artifact display name.")]
     public string Name { get; set; } = string.Empty;
 
+    [SwaggerSchema(Description = "Payload size in bytes.")]
+    public long? SizeBytes { get; set; }
+
+    [SwaggerSchema(Description = "Expected SHA-256 of the complete payload file, as hexadecimal text.")]
+    public string FileSha256 { get; set; } = string.Empty;
+
     [SwaggerSchema(Description = "The V1 info hash.")]
     public string InfoHashV1 { get; set; } = string.Empty;
 

@@ -105,18 +105,22 @@ public class PolicyController(
         return await GetProxyStatus(zoneId, artifactId, cancellationToken);
     }
 
-    /// <summary>Gets the latest 100 proxy designation and revocation events for an artifact.</summary>
+    /// <summary>Gets a page of proxy transitions in ascending ID order.</summary>
     /// <param name="zoneId">The distribution zone ID.</param>
     /// <param name="artifactId">The artifact ID.</param>
     /// <param name="cancellationToken">Cancels the request.</param>
-    /// <returns>Transitions from newest to oldest.</returns>
+    /// <returns>Transitions after the cursor; pass the last returned ID as afterId for the next page.</returns>
     [HttpGet("zones/{zoneId:guid}/artifacts/{artifactId}/proxy-transitions")]
-    public async Task<ActionResult<List<ProxyTransitionDto>>> GetProxyTransitions(Guid zoneId, string artifactId, CancellationToken cancellationToken)
+    public async Task<ActionResult<List<ProxyTransitionDto>>> GetProxyTransitions(
+        Guid zoneId, string artifactId, [FromQuery] long afterId = 0,
+        [FromQuery] int limit = 100, CancellationToken cancellationToken = default)
     {
-        var transitions = await election.GetTransitionsAsync(zoneId, artifactId, cancellationToken);
+        if (afterId < 0 || limit is < 1 or > 500)
+            return BadRequest("afterId must be nonnegative and limit must be between 1 and 500.");
+        var transitions = await election.GetTransitionsAsync(zoneId, artifactId, afterId, limit, cancellationToken);
         return Ok(transitions.Select(item => new ProxyTransitionDto
         {
-            MachineId = item.MachineId, Action = item.Action, Reason = item.Reason,
+            Id = item.Id, MachineId = item.MachineId, Action = item.Action, Reason = item.Reason,
             OccurredAtUtc = item.OccurredAtUtc, Generation = item.Generation
         }).ToList());
     }

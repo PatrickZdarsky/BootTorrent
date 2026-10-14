@@ -12,6 +12,7 @@ namespace boottorrent_lib.communication.codec;
 [JsonSerializable(typeof(MachineReRegisterMessage))]
 [JsonSerializable(typeof(ArtifactAssignmentMessage))]
 [JsonSerializable(typeof(ArtifactUnassignmentMessage))]
+[JsonSerializable(typeof(ArtifactDownloadCompletedMessage))]
 [JsonSourceGenerationOptions(WriteIndented = false)]
 public partial class MqttJsonContext : JsonSerializerContext
 {

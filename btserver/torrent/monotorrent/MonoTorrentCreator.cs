@@ -95,6 +95,8 @@ public class MonoTorrentCreator : ITorrentCreator
         
         //Copy artifact to storage path
         File.Copy(filePath, artifactFilePath, true);
+        // The client verifies the stored payload, so record the hash of that copy.
+        fileHash = await ComputeSHA256Hash(artifactFilePath);
         //Generate torrent file
         var creator = new TorrentCreator();
         creator.Announces.Add([_config.TrackerUrl+_config.AnnounceSuffix]);

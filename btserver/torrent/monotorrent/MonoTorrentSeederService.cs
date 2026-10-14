@@ -196,9 +196,14 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
             var manager = await _engine.AddAsync(torrent, dataPath, new TorrentSettingsBuilder
             {
                 AllowDht = false,
-                AllowInitialSeeding = true,
+                // The source may have only one connected proxy. Initial seeding waits for
+                // pieces to spread to other directly connected peers before sending more.
+                AllowInitialSeeding = false,
                 AllowPeerExchange = false,
-                UploadSlots = 0, //Allow unlimited upload slots
+                // MonoTorrent 3.0.2's periodic choke review treats zero slots as zero
+                // even though the setting documents zero as unlimited. Permit every
+                // connected proxy to upload (the default connection limit is 60).
+                UploadSlots = 60,
             }.ToSettings());
             
             manager.PeerConnected += (sender, args) =>
@@ -253,6 +258,11 @@ public class MonoTorrentSeederService : ITorrentSeederService, ITorrentSeeder, I
         }
         return Task.FromResult(hashes);
     }
+
+    /// <summary>Whether the artifact's torrent manager is currently serving a complete copy.</summary>
+    public bool IsActivelySeeding(string artifactId) =>
+        _engine is not null && _managers.TryGetValue(artifactId, out var manager) &&
+        manager.State == TorrentState.Seeding;
 
     public string getClientId()
     {

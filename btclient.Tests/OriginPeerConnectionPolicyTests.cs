@@ -30,7 +30,7 @@ public class OriginPeerConnectionPolicyTests
         Assert.NotEqual(ordinary.ConfigHash, proxy.ConfigHash);
         Assert.False(policy.Apply(ordinary));
         Assert.True(policy.ShouldReject(origin));
-        Assert.False(policy.Apply(proxy));
+        Assert.True(policy.Apply(proxy));
         Assert.False(policy.ShouldReject(origin));
         Assert.True(policy.Apply(ordinary));
         Assert.True(policy.ShouldReject(origin));

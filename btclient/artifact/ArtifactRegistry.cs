@@ -1,5 +1,7 @@
-using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Threading.Channels;
 using boottorrent_lib.artifact;
+using boottorrent_lib.communication.message;
 using boottorrent_lib.torrent;
 using boottorrent_lib.util;
 using btclient.torrent;
@@ -13,8 +15,11 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
 {
     private readonly SemaphoreSlim _assignmentGate = new(1, 1);
     private readonly object _stateLock = new();
-    private readonly HashSet<string> _loadedFromDiskIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ITorrentStatus> _currentStatuses = new(StringComparer.Ordinal);
+    private readonly HashSet<ITorrentStatus> _completionEmitted = new();
+    private readonly Channel<ArtifactDownloadCompletedMessage> _completed = Channel.CreateUnbounded<ArtifactDownloadCompletedMessage>();
     public List<ITorrentStatus> ActiveJobs { get; } = new();
+    public ChannelReader<ArtifactDownloadCompletedMessage> CompletedDownloads => _completed.Reader;
 
     public List<ClientHostedArtifact> Artifacts { get; } = new();
 
@@ -30,11 +35,17 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
             bool duplicate;
             lock (_stateLock)
                 duplicate = ActiveJobs.Any(job => job.TorrentJob.ArtifactId == torrentJob.ArtifactId) ||
-                    (Artifacts.Any(artifact => artifact.ID == torrentJob.ArtifactId) &&
-                     !_loadedFromDiskIds.Contains(torrentJob.ArtifactId));
+                    Artifacts.Any(artifact => artifact.ID == torrentJob.ArtifactId &&
+                        artifact.State == ClientHostedArtifact.ArtifactState.Ready);
             if (duplicate)
             {
                 logger.LogDebug("Ignoring duplicate assignment for artifact {ArtifactId}.", torrentJob.ArtifactId);
+                return;
+            }
+
+            if (torrentJob.FileSha256 is not { Length: 64 } || !torrentJob.FileSha256.All(Uri.IsHexDigit))
+            {
+                logger.LogError("Assignment for artifact {ArtifactId} has no valid expected SHA-256.", torrentJob.ArtifactId);
                 return;
             }
         
@@ -48,33 +59,26 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
                 logger.LogWarning("Assignment for artifact {ArtifactId} failed and can be retried.", torrentJob.ArtifactId);
                 return;
             }
-            status.StateChanged += (s, e) =>
-            {
-                lock (_stateLock)
-                {
-                    var artifact = Artifacts.FirstOrDefault(a => a.ID == torrentJob.ArtifactId);
-                    artifact?.State = ConvertTorrentStateToArtifactState(status.State);
-                    if (artifact?.State == ClientHostedArtifact.ArtifactState.Ready)
-                        ActiveJobs.Remove(status);
-                }
-            };
+            var verificationGate = new SemaphoreSlim(1, 1);
+            status.StateChanged += (_, _) => _ = UpdateStatusAsync(status, verificationGate);
 
             ClientHostedArtifact artifact;
             lock (_stateLock)
             {
-                _loadedFromDiskIds.Remove(torrentJob.ArtifactId);
                 artifact = Artifacts.FirstOrDefault(existing => existing.ID == torrentJob.ArtifactId) ?? new ClientHostedArtifact()
                 {
                     ID = torrentJob.ArtifactId,
                     Name = torrentJob.Name,
                     State = ClientHostedArtifact.ArtifactState.Initializing
                 };
-                artifact.State = ConvertTorrentStateToArtifactState(status.State);
+                artifact.State = ClientHostedArtifact.ArtifactState.Initializing;
                 if (!Artifacts.Contains(artifact)) Artifacts.Add(artifact);
-                if (artifact.State != ClientHostedArtifact.ArtifactState.Ready) ActiveJobs.Add(status);
+                _currentStatuses[torrentJob.ArtifactId] = status;
+                ActiveJobs.Add(status);
             }
             //Save metadata
             await File.WriteAllTextAsync(artifactMetaDataPath, JsonConvert.SerializeObject(artifact));
+            _ = UpdateStatusAsync(status, verificationGate);
         }
         finally
         {
@@ -104,9 +108,10 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
 
             lock (_stateLock)
             {
+                if (_currentStatuses.Remove(artifactId, out var currentStatus))
+                    _completionEmitted.Remove(currentStatus);
                 ActiveJobs.RemoveAll(job => job.TorrentJob.ArtifactId == artifactId);
                 Artifacts.RemoveAll(artifact => artifact.ID == artifactId);
-                _loadedFromDiskIds.Remove(artifactId);
             }
         }
         finally { _assignmentGate.Release(); }
@@ -128,7 +133,9 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
         lock (_stateLock)
         {
             Artifacts.Clear();
-            _loadedFromDiskIds.Clear();
+            _currentStatuses.Clear();
+            _completionEmitted.Clear();
+            ActiveJobs.Clear();
         }
 
         var artifactDirectories = Directory.GetDirectories(artifactPath);
@@ -152,7 +159,6 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
                         if (Artifacts.Any(a => a.ID == artifact.ID)) continue;
                         // Persisted metadata is not proof that a torrent is currently verified and seeding.
                         artifact.State = ClientHostedArtifact.ArtifactState.Initializing;
-                        _loadedFromDiskIds.Add(artifact.ID);
                         Artifacts.Add(artifact);
                     }
                     logger.LogInformation("Found artifact '{ArtifactName}' with ID '{ArtifactId}'.", artifact.Name, artifact.ID);
@@ -178,14 +184,83 @@ public class ArtifactRegistry(IOptionsMonitor<BTClientSettings> settings, ITorre
         }
     }
 
-    private static ClientHostedArtifact.ArtifactState ConvertTorrentStateToArtifactState(ITorrentStatus.TorrentDownloadState statusState)
-    {        
-        return statusState switch
+    private async Task UpdateStatusAsync(ITorrentStatus status, SemaphoreSlim verificationGate)
+    {
+        await verificationGate.WaitAsync();
+        try
         {
-            ITorrentStatus.TorrentDownloadState.DOWNLOADING => ClientHostedArtifact.ArtifactState.Downloading,
-            ITorrentStatus.TorrentDownloadState.DOWNLOADED => ClientHostedArtifact.ArtifactState.Ready,
-            _ => ClientHostedArtifact.ArtifactState.Initializing
-        };
+            var artifactId = status.TorrentJob.ArtifactId;
+            lock (_stateLock)
+            {
+                if (!_currentStatuses.TryGetValue(artifactId, out var currentStatus) || currentStatus != status ||
+                    Artifacts.All(a => a.ID != artifactId)) return;
+                if (status.State != ITorrentStatus.TorrentDownloadState.DOWNLOADED)
+                {
+                    Artifacts.First(a => a.ID == artifactId).State = status.State == ITorrentStatus.TorrentDownloadState.DOWNLOADING
+                        ? ClientHostedArtifact.ArtifactState.Downloading
+                        : ClientHostedArtifact.ArtifactState.Initializing;
+                    if (!ActiveJobs.Contains(status)) ActiveJobs.Add(status);
+                    return;
+                }
+                if (Artifacts.Any(a => a.ID == artifactId && a.State == ClientHostedArtifact.ArtifactState.Ready)) return;
+            }
+
+            var filePath = status.DownloadedFilePath;
+            if (filePath is null) throw new InvalidOperationException("Expected a single-file torrent with a downloaded file path.");
+            await using var file = File.OpenRead(filePath);
+            var actualHash = await SHA256.HashDataAsync(file);
+            var expectedHash = Convert.FromHexString(status.TorrentJob.FileSha256);
+            if (!CryptographicOperations.FixedTimeEquals(actualHash, expectedHash))
+                throw new InvalidDataException($"SHA-256 mismatch for artifact {artifactId}.");
+            if (status.State != ITorrentStatus.TorrentDownloadState.DOWNLOADED) return;
+
+            var completedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            lock (_stateLock)
+            {
+                var artifact = Artifacts.FirstOrDefault(a => a.ID == artifactId);
+                if (!_currentStatuses.TryGetValue(artifactId, out var currentStatus) || currentStatus != status ||
+                    artifact is null || artifact.State == ClientHostedArtifact.ArtifactState.Ready) return;
+                artifact.State = ClientHostedArtifact.ArtifactState.Ready;
+                ActiveJobs.Remove(status);
+                if (_completionEmitted.Add(status)) _completed.Writer.TryWrite(new ArtifactDownloadCompletedMessage
+                {
+                    ArtifactId = artifactId,
+                    CompletedAtUnixMilliseconds = completedAt,
+                    FileSha256 = Convert.ToHexStringLower(actualHash)
+                });
+            }
+            logger.LogInformation("Artifact {ArtifactId} passed full-file SHA-256 verification.", artifactId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Full-file verification failed for artifact {ArtifactId}.", status.TorrentJob.ArtifactId);
+            var shouldStop = false;
+            lock (_stateLock)
+            {
+                if (_currentStatuses.TryGetValue(status.TorrentJob.ArtifactId, out var currentStatus) && currentStatus == status)
+                {
+                    shouldStop = true;
+                    _currentStatuses.Remove(status.TorrentJob.ArtifactId);
+                    _completionEmitted.Remove(status);
+                    ActiveJobs.Remove(status);
+                    var artifact = Artifacts.FirstOrDefault(a => a.ID == status.TorrentJob.ArtifactId);
+                    if (artifact is not null) artifact.State = ClientHostedArtifact.ArtifactState.Initializing;
+                }
+            }
+            try
+            {
+                if (shouldStop && status.InfoHash is not null)
+                    await torrentClient.RemoveTorrentAsync(status.InfoHash);
+            }
+            catch (Exception stopEx)
+            {
+                logger.LogError(stopEx, "Could not stop unverified torrent for artifact {ArtifactId}.", status.TorrentJob.ArtifactId);
+            }
+        }
+        finally
+        {
+            verificationGate.Release();
+        }
     }
 
     private async Task<ITorrentStatus> SaveTorrentAndDownload(TorrentJob torrentJob)

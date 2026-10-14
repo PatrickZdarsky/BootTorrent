@@ -351,18 +351,20 @@ public sealed class ProxyElectionService(
         finally { _gate.Release(); }
     }
 
-    /// <summary>Gets the 100 most recent proxy designation and revocation events.</summary>
+    /// <summary>Gets proxy transitions in stable ascending ID order after the supplied cursor.</summary>
     /// <param name="zoneId">The distribution zone ID.</param>
     /// <param name="artifactId">The artifact ID.</param>
     /// <param name="cancellationToken">Cancels the database query.</param>
     /// <returns>Transitions ordered from newest to oldest.</returns>
-    public async Task<IReadOnlyList<ProxyElectionTransition>> GetTransitionsAsync(Guid zoneId, string artifactId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ProxyElectionTransition>> GetTransitionsAsync(
+        Guid zoneId, string artifactId, long afterId = 0, int limit = 100,
+        CancellationToken cancellationToken = default)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BtDbContext>();
         return await db.ProxyElectionTransitions.AsNoTracking()
-            .Where(item => item.ZoneId == zoneId && item.ArtifactId == artifactId)
-            .OrderByDescending(item => item.Id).Take(100).ToListAsync(cancellationToken);
+            .Where(item => item.ZoneId == zoneId && item.ArtifactId == artifactId && item.Id > afterId)
+            .OrderBy(item => item.Id).Take(limit).ToListAsync(cancellationToken);
     }
 
     private static async Task<bool> ZoneExistsAsync(BtDbContext db, Guid zoneId, CancellationToken cancellationToken) =>

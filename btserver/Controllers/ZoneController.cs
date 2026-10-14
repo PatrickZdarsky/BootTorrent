@@ -78,8 +78,8 @@ public class ZoneController(
 
         dbContext.Zones.Add(zone);
         await dbContext.SaveChangesAsync(cancellationToken);
-        await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
         await proxyElectionService.ReconcileAllAsync(cancellationToken);
+        await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
 
         var dto = zone.ToDto();
         return CreatedAtAction(nameof(GetZone), new { id = zone.Id }, dto);
@@ -135,8 +135,8 @@ public class ZoneController(
         existingZone.IsDistributionZone = updatedZone.IsDistributionZone;
         existingZone.AssignedArtifactIds = updatedZone.AssignedArtifactIds;
         await dbContext.SaveChangesAsync(cancellationToken);
-        await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
         await proxyElectionService.ReconcileAllAsync(cancellationToken);
+        await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
 
         return Ok(existingZone.ToDto());
     }
@@ -164,8 +164,8 @@ public class ZoneController(
             .FirstOrDefaultAsync(configuration => configuration.ZoneId == id, cancellationToken);
         if (proxyConfiguration is not null) dbContext.ProxyZoneConfigurations.Remove(proxyConfiguration);
         await dbContext.SaveChangesAsync(cancellationToken);
-        await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
         await proxyElectionService.ReconcileAllAsync(cancellationToken);
+        await machineConfigurationService.EnsureConfigurationsAsync(machineRegistry.Machines.Values, cancellationToken);
         return NoContent();
     }
 
